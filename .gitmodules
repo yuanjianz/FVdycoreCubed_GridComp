@@ -1,0 +1,4 @@
+[submodule "fvdycore"]
+	path = fvdycore
+	url = https://github.com/geoschem/GFDL_atmos_cubed_sphere.git
+	branch = dev/gchp
