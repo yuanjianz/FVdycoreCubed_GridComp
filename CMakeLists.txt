@@ -16,7 +16,9 @@ set (srcs
   CubeGridPrototype.F90
   )
 
-set(dependencies MAPL_Base GMAO_hermes GEOS_Shared)
+# set(dependencies MAPL_Base GMAO_hermes GEOS_Shared)
+add_subdirectory(fvdycore)
+set(dependencies MAPL_Base GMAO_hermes GEOS_Shared fvdycore)
 
 if (FV_PRECISION STREQUAL R4)
    set (GFDL GFDL_fms_r4)
@@ -29,7 +31,7 @@ endif ()
 
 esma_add_library (${this}
   SRCS ${srcs}
-  SUBCOMPONENTS fvdycore
+  # SUBCOMPONENTS fvdycore
   DEPENDENCIES ${dependencies}
   DEPENDENCIES ${GFDL}
   INCLUDES ${INC_ESMF} ${extra_incs})
