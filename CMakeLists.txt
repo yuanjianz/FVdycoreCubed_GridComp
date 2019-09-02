@@ -33,8 +33,7 @@ esma_add_library (${this}
   SRCS ${srcs}
   # SUBCOMPONENTS fvdycore
   DEPENDENCIES ${dependencies}
-  DEPENDENCIES ${GFDL}
-  INCLUDES ${INC_ESMF} ${extra_incs})
+  DEPENDENCIES ${GFDL})
 
 if (FV_PRECISION MATCHES R4)
   target_compile_definitions (${this} PRIVATE -DSINGLE_FV -DOVERLOAD_R4)
