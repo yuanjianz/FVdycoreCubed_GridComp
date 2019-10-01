@@ -192,12 +192,32 @@ contains
 
     call MAPL_AddImportSpec ( gc,                                  &
          SHORT_NAME = 'PLE1',                                      &
-         LONG_NAME  = 'pressure_at_layer_edges_after_advection',   &                
+         LONG_NAME  = 'pressure_at_layer_edges_after_advection',   &
          UNITS      = 'Pa',                                        &
          PRECISION  = ESMF_KIND_R8,                                &
          DIMS       = MAPL_DimsHorzVert,                           &
          VLOCATION  = MAPL_VLocationEdge,             RC=STATUS  )
      _VERIFY(STATUS)
+
+    ! GCHP CTM: dry pressure 0 import
+    call MAPL_AddImportSpec ( gc,                                  &
+         SHORT_NAME = 'DryPLE0',                                   &
+         LONG_NAME  = 'dry_pressure_at_layer_edges_before_advection',&
+         UNITS      = 'Pa',                                        &
+         PRECISION  = ESMF_KIND_R8,                                &
+         DIMS       = MAPL_DimsHorzVert,                           &
+         VLOCATION  = MAPL_VLocationEdge,             RC=STATUS  )
+     _VERIFY(STATUS)
+
+    ! GCHP CTM: dry pressure 1 import
+    call MAPL_AddImportSpec ( gc,                                  &
+         SHORT_NAME = 'DryPLE1',                                   &
+         LONG_NAME  = 'dry_pressure_at_layer_edges_after_advection',&
+         UNITS      = 'Pa',                                        &
+         PRECISION  = ESMF_KIND_R8,                                &
+         DIMS       = MAPL_DimsHorzVert,                           &
+         VLOCATION  = MAPL_VLocationEdge,             RC=STATUS  )
+    _VERIFY(STATUS)
 
     call MAPL_AddImportSpec( gc,                              &
         SHORT_NAME = 'TRADV',                                        &
@@ -215,7 +235,26 @@ contains
           DIMS       = MAPL_DimsHorzOnly,                           &
           VLOCATION  = MAPL_VLocationNone,               RC=STATUS  )
      _VERIFY(STATUS)
- 
+
+      ! GCHP CTM: moist pressure export
+     call MAPL_AddExportSpec ( gc,                                  &
+          SHORT_NAME = 'PLE',                                       &
+          LONG_NAME  = 'pressure_at_layer_edges',                   &
+          UNITS      = 'Pa'   ,                                     &
+          PRECISION  = ESMF_KIND_R8,                                &
+          DIMS       = MAPL_DimsHorzVert,                           &
+          VLOCATION  = MAPL_VLocationEdge,               RC=STATUS  )
+     _VERIFY(STATUS)
+
+     ! GCHP CTM: dry pressure export
+     call MAPL_AddExportSpec ( gc,                                  &
+          SHORT_NAME = 'DryPLE',                                    &
+          LONG_NAME  = 'dry_pressure_at_layer_edges',               &
+          UNITS      = 'Pa'   ,                                     &
+          PRECISION  = ESMF_KIND_R8,                                &
+          DIMS       = MAPL_DimsHorzVert,                           &
+          VLOCATION  = MAPL_VLocationEdge,               RC=STATUS  )
+     _VERIFY(STATUS)
 
 ! 3D Tracers
      do ntracer=1,ntracers
@@ -463,6 +502,12 @@ contains
       REAL(REAL8), POINTER, DIMENSION(:,:,:)   :: iMFY
       REAL(REAL8), POINTER, DIMENSION(:,:,:)   :: iPLE0
       REAL(REAL8), POINTER, DIMENSION(:,:,:)   :: iPLE1
+      REAL(REAL8), POINTER, DIMENSION(:,:,:)   :: iDryPLE0 ! GCHP only
+      REAL(REAL8), POINTER, DIMENSION(:,:,:)   :: iDryPLE1 ! GCHP only
+
+! Exports
+      REAL(REAL8), POINTER, DIMENSION(:,:,:)   :: ePLE     ! GCHP only
+      REAL(REAL8), POINTER, DIMENSION(:,:,:)   :: eDryPLE  ! GCHP only
 
 ! Locals
       REAL(FVPRC), POINTER, DIMENSION(:,:,:)   :: CX
@@ -471,6 +516,8 @@ contains
       REAL(FVPRC), POINTER, DIMENSION(:,:,:)   :: MFY
       REAL(FVPRC), POINTER, DIMENSION(:,:,:)   :: PLE0
       REAL(FVPRC), POINTER, DIMENSION(:,:,:)   :: PLE1
+      REAL(FVPRC), POINTER, DIMENSION(:,:,:)   :: DryPLE0 ! GCHP only
+      REAL(FVPRC), POINTER, DIMENSION(:,:,:)   :: DryPLE1 ! GCHP only
       REAL(FVPRC), POINTER, DIMENSION(:)       :: AK
       REAL(FVPRC), POINTER, DIMENSION(:)       :: BK
       REAL(REAL8), allocatable :: ak_r8(:),bk_r8(:)
@@ -549,6 +596,10 @@ contains
       _VERIFY(STATUS)
       CALL MAPL_GetPointer(IMPORT, iPLE1, 'PLE1', ALLOC = .TRUE., RC=STATUS)
       _VERIFY(STATUS)
+      CALL MAPL_GetPointer(IMPORT, iDryPLE0, 'DryPLE0', ALLOC=.TRUE., RC=STATUS)
+      _VERIFY(STATUS)
+      CALL MAPL_GetPointer(IMPORT, iDryPLE1, 'DryPLE1', ALLOC=.TRUE., RC=STATUS)
+      _VERIFY(STATUS)
       CALL MAPL_GetPointer(IMPORT, iMFX,   'MFX', ALLOC = .TRUE., RC=STATUS)
       _VERIFY(STATUS)
       CALL MAPL_GetPointer(IMPORT, iMFY,   'MFY', ALLOC = .TRUE., RC=STATUS)
@@ -560,6 +611,8 @@ contains
 
       ALLOCATE( PLE0(IM,JM,LM+1) )
       ALLOCATE( PLE1(IM,JM,LM+1) )
+      ALLOCATE( DryPLE0(IM,JM,LM+1) ) ! GCHP only
+      ALLOCATE( DryPLE1(IM,JM,LM+1) ) ! GCHP only
       ALLOCATE(  MFX(IM,JM,LM  ) )
       ALLOCATE(  MFY(IM,JM,LM  ) )
       ALLOCATE(   CX(IM,JM,LM  ) )
@@ -567,6 +620,8 @@ contains
 
       PLE0 = iPLE0
       PLE1 = iPLE1
+      DryPLE0 = iDryPLE0 ! GCHP only
+      DryPLE1 = iDryPLE1 ! GCHP only
        MFX = iMFX
        MFY = iMFY
         CX = iCX
@@ -749,32 +804,63 @@ contains
 
          if (chk_mass) then
         ! Check Mass conservation
+
+            ! GEOS CTM: use moist pressure
+            !if (firstRun .and. AdvCore_Advection>0) then
+            !   MASS0 = g_sum(FV_Atm(1)%domain, PLE0(:,:,LM), is,ie, js,je, FV_Atm(1)%ng, FV_Atm(1)%gridstruct%area_64, 1, .true.)
+            !   call global_integral(TMASS0, TRACERS, PLE0, IM,JM,LM,NQ)
+            !   if (MASS0 /= 0.0) TMASS0=TMASS0/MASS0
+            !elseif (firstRun) then
+            !   MASS0 = g_sum(FV_Atm(1)%domain, PLE1(:,:,LM), is,ie, js,je, FV_Atm(1)%ng, FV_Atm(1)%gridstruct%area_64, 1, .true.)
+            !   call global_integral(TMASS0, TRACERS, PLE1, IM,JM,LM,NQ)
+            !   if (MASS0 /= 0.0) TMASS0=TMASS0/MASS0
+            !endif
+
+            ! GCHP CTM: use dry pressure
             if (firstRun .and. AdvCore_Advection>0) then
-               MASS0 = g_sum(FV_Atm(1)%domain, PLE0(:,:,LM), is,ie, js,je, FV_Atm(1)%ng, FV_Atm(1)%gridstruct%area_64, 1, .true.)
-               call global_integral(TMASS0, TRACERS, PLE0, IM,JM,LM,NQ)
+               MASS0 = g_sum(FV_Atm(1)%domain, DryPLE0(:,:,LM), is,ie, js,je, FV_Atm(1)%ng, FV_Atm(1)%gridstruct%area_64, 1, .true.)
+               call global_integral(TMASS0, TRACERS, DryPLE0, IM,JM,LM,NQ)
                if (MASS0 /= 0.0) TMASS0=TMASS0/MASS0
             elseif (firstRun) then
-               MASS0 = g_sum(FV_Atm(1)%domain, PLE1(:,:,LM), is,ie, js,je, FV_Atm(1)%ng, FV_Atm(1)%gridstruct%area_64, 1, .true.)
-               call global_integral(TMASS0, TRACERS, PLE1, IM,JM,LM,NQ)
+               MASS0 = g_sum(FV_Atm(1)%domain, DryPLE1(:,:,LM), is,ie, js,je, FV_Atm(1)%ng, FV_Atm(1)%gridstruct%area_64, 1, .true.)
+               call global_integral(TMASS0, TRACERS, DryPLE1, IM,JM,LM,NQ)
                if (MASS0 /= 0.0) TMASS0=TMASS0/MASS0
             endif
+
+
          endif
          firstRun=.false.
 
          ! Run FV3 advection
          !------------------
          if (AdvCore_Advection>0) then
-         call offline_tracer_advection(TRACERS, PLE0, PLE1, MFX, MFY, CX, CY, &
+
+         ! GEOS CTM: use moist pressure
+         !call offline_tracer_advection(TRACERS, PLE0, PLE1, MFX, MFY, CX, CY, &
+         !                              FV_Atm(1)%gridstruct, FV_Atm(1)%flagstruct, FV_Atm(1)%bd, &
+         !                              FV_Atm(1)%domain, AK, BK, PTOP, FV_Atm(1)%npx, FV_Atm(1)%npy, FV_Atm(1)%npz,   &
+         !                              NQ, dt)
+
+         ! GCHP CTM: use dry pressure
+         call offline_tracer_advection(TRACERS, DryPLE0, DryPLE1, MFX, MFY, CX, CY, &
                                        FV_Atm(1)%gridstruct, FV_Atm(1)%flagstruct, FV_Atm(1)%bd, &
                                        FV_Atm(1)%domain, AK, BK, PTOP, FV_Atm(1)%npx, FV_Atm(1)%npy, FV_Atm(1)%npz,   &
                                        NQ, dt)
+
          endif
 
          ! Update tracer mass conservation
          !-------------------------------------------------------------------------
-         if (chk_mass) then 
-            MASS1 = g_sum(FV_Atm(1)%domain, PLE1(:,:,LM), is,ie, js,je, FV_Atm(1)%ng, FV_Atm(1)%gridstruct%area_64, 1, .true.)
-            call global_integral(TMASS1, TRACERS, PLE1, IM,JM,LM,NQ)
+         if (chk_mass) then
+
+            ! GEOS CTM: use moist pressure 
+            !MASS1 = g_sum(FV_Atm(1)%domain, PLE1(:,:,LM), is,ie, js,je, FV_Atm(1)%ng, FV_Atm(1)%gridstruct%area_64, 1, .true.)
+            !call global_integral(TMASS1, TRACERS, PLE1, IM,JM,LM,NQ)
+
+            ! GCHP CTM: use dry pressure
+            MASS1 = g_sum(FV_Atm(1)%domain, DryPLE1(:,:,LM), is,ie, js,je, FV_Atm(1)%ng, FV_Atm(1)%gridstruct%area_64, 1, .true.)
+            call global_integral(TMASS1, TRACERS, DryPLE1, IM,JM,LM,NQ)
+
             if (MASS1 /= 0.0) TMASS1=TMASS1/MASS1
          endif
 
@@ -826,6 +912,14 @@ contains
 
       end if ! NQ > 0
 
+      ! GCHP only: update dry and wet pressure edge exports
+      call MAPL_GetPointer ( EXPORT, eDryPLE, 'DryPLE', ALLOC=.TRUE., RC=STATUS )
+      _VERIFY(STATUS)
+      eDryPLE(:,:,:) = DryPLE1(:,:,:)
+      call MAPL_GetPointer ( EXPORT, ePLE, 'PLE', ALLOC=.TRUE., RC=STATUS )
+      _VERIFY(STATUS)
+      ePLE(:,:,:) = PLE1(:,:,:)
+
       deallocate( advTracers, stat=STATUS )
       _VERIFY(STATUS)
       DEALLOCATE( AK ,stat=STATUS )
@@ -835,6 +929,8 @@ contains
 
       DEALLOCATE( PLE0 )
       DEALLOCATE( PLE1 )
+      DEALLOCATE( DryPLE0 ) ! GCHP only
+      DEALLOCATE( DryPLE1 ) ! GCHP only
       DEALLOCATE(  MFX )
       DEALLOCATE(  MFY )
       DEALLOCATE(   CX )
