@@ -499,7 +499,7 @@
 
 !  version of a2d3d routine from FV_StateMod
 
-   subroutine A2D2C(U,V,npz,getC)
+   subroutine fv_A2D2C(U,V,npz,getC)
 
 ! Move A-Grid winds/tendencies oriented on lat/lon to the D-grid, or Optionally C-grid cubed-sphere orientation
 ! will return d-grid winds unless user asks for c-grid winds
@@ -730,4 +730,4 @@
 
       end if
 
-   end subroutine A2D2C
+   end subroutine fv_A2D2C
