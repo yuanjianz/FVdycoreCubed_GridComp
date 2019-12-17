@@ -16,22 +16,22 @@ set (srcs
   CubeGridPrototype.F90
   )
 
-# set(dependencies MAPL_Base GMAO_hermes GEOS_Shared)
+# set(dependencies MAPL_Base gftl-shared GMAO_hermes GEOS_Shared)
 add_subdirectory(fvdycore)
-set(dependencies MAPL_Base GMAO_hermes GEOS_Shared fvdycore)
+set(dependencies MAPL_Base gftl-shared GMAO_hermes GEOS_Shared fvdycore)
 
 if (FV_PRECISION STREQUAL R4)
-   set (GFDL GFDL_fms_r4)
+   set (GFDL fms_r4)
 elseif (FV_PRECISION STREQUAL R4R8) # FV is R4 but FMS is R8
-   get_target_property (extra_incs GFDL_fms_r4 INCLUDE_DIRECTORIES)
-   set (GFDL GFDL_fms_r8)
+   get_target_property (extra_incs fms_r4 INCLUDE_DIRECTORIES)
+   set (GFDL fms_r8)
 elseif (FV_PRECISION STREQUAL R8)
-   set (GFDL GFDL_fms_r8)
+   set (GFDL fms_r8)
 endif ()
 
 esma_add_library (${this}
   SRCS ${srcs}
-  # SUBCOMPONENTS fvdycore
+  #SUBCOMPONENTS @fvdycore
   DEPENDENCIES ${dependencies}
   DEPENDENCIES ${GFDL})
 
@@ -63,7 +63,7 @@ set_target_properties (StandAlone_FV3_Dycore.x PROPERTIES LINK_FLAGS "${OpenMP_F
 ecbuild_add_executable (
   TARGET rs_scale.x
   SOURCES rs_scale.F90
-  LIBS ${this} GMAO_pFIO)
+  LIBS ${this})
 set_target_properties (rs_scale.x PROPERTIES LINK_FLAGS "${OpenMP_Fortran_FLAGS}")
 
 ecbuild_add_executable (

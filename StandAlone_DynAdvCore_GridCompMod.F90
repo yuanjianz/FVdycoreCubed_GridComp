@@ -14,7 +14,7 @@
 ! !USES:
 
       use ESMF
-      use MAPL_Mod
+      use MAPL
       use AdvCore_GridCompMod,    only : AdvCoreSetServices   => SetServices
       use FVdycoreCubed_GridComp, only : DynCoreSetServices   => SetServices
 
@@ -72,36 +72,35 @@ contains
       ! ---------------------------------------
 
       call ESMF_GridCompGet( GC, NAME=COMP_NAME, RC=STATUS )
-      _VERIFY(STATUS)
+      VERIFY_(STATUS)
       Iam = trim(COMP_NAME) // 'SetServices'
 
 ! Register methods with MAPL
 ! --------------------------
 
       call MAPL_GridCompSetEntryPoint ( GC, ESMF_METHOD_INITIALIZE,  Initialize, RC=status )
-      _VERIFY(STATUS)
+      VERIFY_(STATUS)
       call MAPL_GridCompSetEntryPoint ( GC, ESMF_METHOD_RUN,         Run,        RC=status )
-      _VERIFY(STATUS)
+      VERIFY_(STATUS)
       call MAPL_GridCompSetEntryPoint ( GC, ESMF_METHOD_FINALIZE,    Finalize,   RC=status )
-      _VERIFY(STATUS)
+      VERIFY_(STATUS)
 
-      ! Create childrens gridded components and invoke their SetServices
+      ! Creat childrens gridded components and invoke their SetServices
       !-----------------------------------------------------------------
-
       DynCore = MAPL_AddChild(GC, NAME='DYN',   SS=DynCoreSetServices, RC=status)
-      _VERIFY(STATUS)
+      VERIFY_(STATUS)
 
       AdvCore = MAPL_AddChild(GC, NAME='ADV',   SS=AdvCoreSetServices, RC=status)
-      _VERIFY(STATUS)
+      VERIFY_(STATUS)
 
       call MAPL_TimerAdd(GC, name="INITIALIZE"    ,RC=STATUS)
-      _VERIFY(STATUS)
+      VERIFY_(STATUS)
 
       call MAPL_TimerAdd(GC, name="RUN"           ,RC=STATUS)
-      _VERIFY(STATUS)
+      VERIFY_(STATUS)
 
       call MAPL_TimerAdd(GC, name="TOTAL"         ,RC=STATUS)
-      _VERIFY(STATUS)
+      VERIFY_(STATUS)
 
       ! AdvCore Imports
       ! ---------------
@@ -110,19 +109,19 @@ contains
                  DST_ID      = AdvCore,                                 &
                  SRC_ID      = DynCore,                                 &
                                                              RC=STATUS  )
-      _VERIFY(STATUS)
+      VERIFY_(STATUS)
 
 
       ! Ending with a Generic SetServices call is a MAPL requirement 
       !-------------------------------------------------------------
       call MAPL_GenericSetServices    ( GC, rc=STATUS)
-      _VERIFY(STATUS)
+      VERIFY_(STATUS)
 
       ! All done
       ! --------
       !if ( MAPL_AM_I_ROOT() ) print *, trim(Iam) // ': done!'
 
-      _RETURN(ESMF_SUCCESS)
+      RETURN_(ESMF_SUCCESS)
 
       end subroutine SetServices
 !EOC
@@ -173,13 +172,7 @@ contains
       real                          :: cdt         ! time step in secs
 
       character(len=ESMF_MAXSTR)    :: comp_name
-      type (ESMF_FieldBundle)             :: BUNDLE1, BUNDLE2
-      type (ESMF_GridComp),      pointer  :: GCS(:)
-      type (ESMF_State),         pointer  :: GIM(:)
-      type (ESMF_State),         pointer  :: GEX(:)
       type (MAPL_MetaComp), pointer :: MAPL
-      INTEGER :: numTracers, I
-      type (ESMF_Field)            :: field
 !-------------------------------------------------------------------------
 !BOC
       Iam = 'Initialize'
@@ -187,58 +180,29 @@ contains
 !  Get my name and set-up traceback handle
 !  ---------------------------------------
       call ESMF_GridCompGet( GC, name=COMP_NAME, RC=status )
-      _VERIFY(STATUS)
+      VERIFY_(STATUS)
       Iam = trim(comp_name) // trim(Iam)
 
-     !if ( MAPL_AM_I_ROOT() ) print *, trim(Iam) // ':  Generic Init...'
+     if ( MAPL_AM_I_ROOT() ) print *, trim(Iam) // ':  Generic Init...'
 
       !  Create grid for this GC
       !  ------------------------
       call MAPL_GridCreate  (GC, RC=status )
-      _VERIFY(STATUS)
+      VERIFY_(STATUS)
 
       call MAPL_GetObjectFromGC ( GC, MAPL, RC=STATUS)
-      _VERIFY(STATUS)
+      VERIFY_(STATUS)
 
 !  Initialize MAPL Generic
 !  -----------------------
 
       call MAPL_GenericInitialize ( gc, IMPORT, EXPORT, clock,  RC=status )
-      _VERIFY(STATUS)
-
-      ! Get children and their im/ex states from my generic state.
-      !----------------------------------------------------------
-
-      call MAPL_Get ( MAPL, GCS=GCS, GIM=GIM, GEX=GEX, RC=STATUS )
-      _VERIFY(STATUS)
-
-      call ESMF_StateGet  (GIM(DynCore), 'TRADV', BUNDLE1, RC=STATUS )
-      _VERIFY(STATUS)
-
-      call ESMF_FieldBundleGet(BUNDLE1, fieldCount=numTracers,  rc=STATUS)
-      _VERIFY(STATUS)
-
-      IF ( MAPL_AM_I_ROOT() ) PRINT*, 'Number of tracers: ', numTracers
-
-      call ESMF_StateGet  (GIM(AdvCore), 'TRADV', BUNDLE2, RC=STATUS )
-      _VERIFY(STATUS)
-
-      if (numTracers > 0) then
-         do I=1, numTracers
-            call ESMF_FieldBundleGet (BUNDLE1, fieldIndex=I, field=FIELD, RC=STATUS)
-            _VERIFY(STATUS)
-
-            call MAPL_FieldBundleAdd ( BUNDLE2, field, rc=STATUS )
-            _VERIFY(STATUS)
-
-         end do
-      end if
-
+      VERIFY_(STATUS)
 
 !  All done
 !  --------
      !if ( MAPL_AM_I_ROOT() ) print *, trim(Iam) // ': done!'
-      _RETURN(ESMF_SUCCESS)
+      RETURN_(ESMF_SUCCESS)
 
       END SUBROUTINE Initialize
 !EOC
@@ -296,7 +260,7 @@ contains
 ! ---------------------------------------
       Iam = 'Run'
       call ESMF_GridCompGet( GC, NAME=COMP_NAME, RC=STATUS )
-      _VERIFY(STATUS)
+      VERIFY_(STATUS)
       Iam = trim(COMP_NAME) // trim(Iam)
 
      !if ( MAPL_AM_I_ROOT() ) print *, trim(Iam) // ':  Generic Run...'
@@ -305,7 +269,7 @@ contains
       !-----------------------------------
 
       call MAPL_GetObjectFromGC ( GC, MAPL, RC=STATUS)
-      _VERIFY(STATUS)
+      VERIFY_(STATUS)
 
       call MAPL_TimerOn(MAPL, "TOTAL")
       call MAPL_TimerOn(MAPL, "RUN")
@@ -318,7 +282,7 @@ contains
                       GCNames = GCNames, &
                       INTERNAL_ESMF_STATE = INTERNAL,  &
                       RC=STATUS )
-      _VERIFY(STATUS)
+      VERIFY_(STATUS)
 
       ! Call Run Method for Children
       I = DynCore
@@ -327,7 +291,7 @@ contains
                             exportState = GEX(I), &
                             clock       = CLOCK, &
                             userRC=STATUS)
-      _VERIFY(STATUS)
+      VERIFY_(STATUS)
 
       I = AdvCore
       call ESMF_GridCompRun(GCS(I), &
@@ -335,14 +299,14 @@ contains
                             exportState = GEX(I), &
                             clock       = CLOCK, &
                             userRC=STATUS)
-      _VERIFY(STATUS)
+      VERIFY_(STATUS)
 
       call MAPL_TimerOff(MAPL, "TOTAL")
       call MAPL_TimerOff(MAPL, "RUN")
 
      !IF ( MAPL_AM_I_ROOT() ) PRINT*, TRIM(Iam) // ': done!'
 
-      _RETURN(ESMF_SUCCESS)
+      RETURN_(ESMF_SUCCESS)
 
       end subroutine Run
 !EOC
@@ -382,17 +346,17 @@ contains
 
       Iam = 'Finalize'
       call ESMF_GridCompGet( GC, NAME=COMP_NAME, RC=STATUS )
-      _VERIFY(STATUS)
+      VERIFY_(STATUS)
       Iam = trim(COMP_NAME) // TRIM(Iam)
 
      !if ( MAPL_AM_I_ROOT() ) print *, trim(Iam) // ':  Generic Fin...'
 
       call MAPL_GenericFinalize(GC, IMPORT, EXPORT, CLOCK, RC)
-      _VERIFY(STATUS)
+      VERIFY_(STATUS)
 
      !IF ( MAPL_AM_I_ROOT() ) PRINT*, TRIM(Iam) // ': done!'
 
-      _RETURN(ESMF_SUCCESS)
+      RETURN_(ESMF_SUCCESS)
       end subroutine Finalize
 !EOC
 !------------------------------------------------------------------------------

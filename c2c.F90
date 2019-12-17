@@ -13,8 +13,7 @@
 program gmao_regrid
 
   use ESMF
-  use MAPL_Mod
-  use MAPL_CubedSphereGridFactoryMod
+  use MAPL
   implicit none
 
   integer, parameter :: GridType_Unknown = 0
@@ -105,10 +104,10 @@ program gmao_regrid
   call getarg(1,f_in)
 
   call ESMF_Initialize (vm=vm, logKindFlag=ESMF_LOGKIND_NONE, rc=status)
-  _VERIFY(STATUS)
+  VERIFY_(STATUS)
 
   call ESMF_VmGet(VM, localPet=myid, petCount=ndes, rc=status)
-  _VERIFY(STATUS)
+  VERIFY_(STATUS)
 
   if (ndes /= 1) then
      print *,''
@@ -119,11 +118,11 @@ program gmao_regrid
 
   if (MAPL_AM_I_Root(vm)) then
      call GuessFileType(f_in, filetype, rc=status)
-     _VERIFY(STATUS)
+     VERIFY_(STATUS)
   end if
 
   call MAPL_CommsBcast(vm, DATA=filetype, N=1, ROOT=0, RC=status)
-  _VERIFY(STATUS)
+  VERIFY_(STATUS)
 
 !  print *, filetype
   gi%filename = f_in
@@ -131,12 +130,12 @@ program gmao_regrid
   ! determine grid type, and compute/guess im,im
   if (filetype ==0) then
      !InNCIO = MAPL_NCIOOpen(f_in,rc=status)
-     !_VERIFY(STATUS)
+     !VERIFY_(STATUS)
      !call GetGridInfo(gi, filetype, ncinfo=InNCIO, rc=status)
-     !_VERIFY(STATUS)   
+     !VERIFY_(STATUS)   
   else
      call GetGridInfo(gi, filetype, rc=status)
-     _VERIFY(STATUS)
+     VERIFY_(STATUS)
   end if
 
   call getarg(2,str)
@@ -203,7 +202,7 @@ program gmao_regrid
         gout%JM = 1441
      end if
   else
-     _VERIFY(999)
+     VERIFY_(999)
   end if
 
   changeResolution =  gi%im /= gout%im .or. gi%jm /= gout%jm
@@ -216,18 +215,18 @@ program gmao_regrid
      gridOut = grid_manager%make_grid(LatLonGridFactory(im_world=gout%im, jm_world=gout%jm, lm=1, nx=1, ny=1))
 
      regridder => regridder_manager%make_regridder(gridIn, gridOut, REGRID_METHOD_BILINEAR, rc=status)
-     _VERIFY(STATUS)
+     VERIFY_(STATUS)
 
      ! allocate buffers
      allocate(var_in(gi%im, gi%jm), stat=status)
-     _VERIFY(STATUS)
+     VERIFY_(STATUS)
      allocate(var_out(gout%im, gout%jm), stat=status)
-     _VERIFY(STATUS)
+     VERIFY_(STATUS)
 
      if (filetype ==0) then
 
         !call MAPL_NCIOChangeRes(InNCIO,OutNCIO,latSize=gout%jm,lonSize=gout%im,rc=status)
-        !_VERIFY(STATUS)
+        !VERIFY_(STATUS)
         !call MAPL_NCIOSet(OutNCIO,filename=gout%filename)
         !call MAPL_NCIOCreateFile(OutNCIO)
         !do n=1,InNCIO%nVars
@@ -236,13 +235,13 @@ program gmao_regrid
            !if (nSpatialDims == 2) then
               !call MAPL_VarRead(InNCIO,InNCIO%vars(n)%name,var_in)
               !call regridder%regrid(var_in, var_out, rc=status)
-              !_VERIFY(STATUS)
+              !VERIFY_(STATUS)
               !call MAPL_VarWrite(OutNCIO,InNCIO%vars(n)%name,var_out)
            !else if (nSpatialDims ==3) then
               !do i=1,dimSizes(3) 
                  !call MAPL_VarRead(InNCIO,InNCIO%vars(n)%name,var_in,lev=i)
                  !call regridder%regrid(var_in, var_out, rc=status)
-                 !_VERIFY(STATUS)
+                 !VERIFY_(STATUS)
                  !call MAPL_VarWrite(OutNCIO,InNCIO%vars(n)%name,var_out,lev=i)
               !end do
            !end if
@@ -251,10 +250,10 @@ program gmao_regrid
      else
         ! open files
         UNIT_R = GetFile(gi%filename, rc=status)
-        _VERIFY(STATUS)
+        VERIFY_(STATUS)
 
         UNIT_W = GetFile(gout%filename, rc=status)
-        _VERIFY(STATUS)
+        VERIFY_(STATUS)
 
         i=0
         ! do until EOF
@@ -267,7 +266,7 @@ program gmao_regrid
         !    transform
         !  write
            call regridder%regrid(var_in, var_out, rc=status)
-           _VERIFY(STATUS)
+           VERIFY_(STATUS)
            write(unit_w) var_out
    !        print *,'record ',i
            cycle
@@ -295,7 +294,7 @@ program gmao_regrid
      print *, 'No change in resolution! Nothing to be done. Copy input to output yourself!'
   end if
   call ESMF_Finalize (RC=status)
-  _VERIFY(STATUS)
+  VERIFY_(STATUS)
 
   contains
 
@@ -305,7 +304,7 @@ program gmao_regrid
 
     subroutine GuessFileType(filename, filetype, rc)
       use ESMF
-      use MAPL_Mod
+      use MAPL
 
       implicit none
 
@@ -332,11 +331,11 @@ program gmao_regrid
 
 
       UNIT = GETFILE(FILENAME, DO_OPEN=0, ALL_PES=.false., RC=STATUS)
-      _VERIFY(STATUS)
+      VERIFY_(STATUS)
       
       INQUIRE(IOLENGTH=IREC) WORD
       open (UNIT=UNIT, FILE=FILENAME, FORM='unformatted', ACCESS='DIRECT', RECL=IREC, IOSTAT=status)
-      _VERIFY(STATUS)
+      VERIFY_(STATUS)
       
 ! Read first 8 characters and compare with HDF5 signature
       read (UNIT, REC=1, ERR=100) TwoWords(1:4)
@@ -355,7 +354,7 @@ program gmao_regrid
       if (typehdf5) then
          print *, 'HDF5 file'
          filetype = 0 ! HDF5
-         _RETURN(ESMF_SUCCESS)
+         RETURN_(ESMF_SUCCESS)
 
       end if
 
@@ -366,21 +365,20 @@ program gmao_regrid
       filetype = irec
       if (cwrd /= 4*irec) then
          print *, "ERROR: not a Fortran binary"
-         _RETURN(ESMF_FAILURE)
+         RETURN_(ESMF_FAILURE)
       end if
 
-      _RETURN(ESMF_SUCCESS)
+      RETURN_(ESMF_SUCCESS)
 
 100   continue
-      _RETURN(ESMF_FAILURE)
+      RETURN_(ESMF_FAILURE)
 
     end subroutine GuessFileType
 
     !subroutine GetGridInfo(gi, filetype, ncinfo, rc)
     subroutine GetGridInfo(gi, filetype, rc)
       use ESMF
-      use MAPL_Mod
-      use MAPL_IOMod
+      use MAPL
 
       implicit none
 
@@ -411,14 +409,14 @@ program gmao_regrid
          !else
             !gi%gridtype = GridType_LatLon
          !end if
-         !_RETURN(ESMF_SUCCESS)
+         !RETURN_(ESMF_SUCCESS)
       end if
 
       if (filetype == 6) then
          print *, ""
          print *,"FV binary not supported yet"
          print *, ""
-         _RETURN(ESMF_FAILURE)
+         RETURN_(ESMF_FAILURE)
       end if
 
       ! check for cubed-sphere
@@ -431,7 +429,7 @@ program gmao_regrid
             gi%gridtype = GridType_CubedSphere
             gi%im = im
             gi%jm = 6*im
-            _RETURN(ESMF_SUCCESS)
+            RETURN_(ESMF_SUCCESS)
          end if
       end if
 
@@ -454,10 +452,10 @@ program gmao_regrid
          print *, ""
          print *, 'Unknown input grid type, assumming TILE, currently not supported'
          print *, ""
-         _RETURN(ESMF_FAILURE)
+         RETURN_(ESMF_FAILURE)
       end if
 
-      _RETURN(ESMF_SUCCESS)
+      RETURN_(ESMF_SUCCESS)
 
     end subroutine GetGridInfo
 
