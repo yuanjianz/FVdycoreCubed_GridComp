@@ -34,7 +34,7 @@ set (srcs
 
 # set(dependencies MAPL_Base gftl-shared GMAO_hermes GEOS_Shared)
 add_subdirectory(fvdycore)
-set(dependencies MAPL_Base gftl-shared GMAO_hermes GEOS_Shared fvdycore)
+set(dependencies MAPL.base gftl-shared GMAO_hermes GEOS_Shared fvdycore)
 
 if (FV_PRECISION STREQUAL R4)
    set (GFDL fms_r4)
