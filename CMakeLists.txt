@@ -32,24 +32,26 @@ set (srcs
   GEOS_FV3_Utilities.F90
 )
 
-# set(dependencies MAPL_Base gftl-shared GMAO_hermes GEOS_Shared)
+#set(dependencies MAPL_Base gftl-shared GMAO_hermes GEOS_Shared)
 add_subdirectory(fvdycore)
 set(dependencies MAPL.base gftl-shared GMAO_hermes GEOS_Shared fvdycore)
-
-if (FV_PRECISION STREQUAL R4)
-   set (GFDL fms_r4)
-elseif (FV_PRECISION STREQUAL R4R8) # FV is R4 but FMS is R8
-   get_target_property (extra_incs fms_r4 INCLUDE_DIRECTORIES)
-   set (GFDL fms_r8)
-elseif (FV_PRECISION STREQUAL R8)
-   set (GFDL fms_r8)
-endif ()
 
 esma_add_library (${this}
   SRCS ${srcs}
   #SUBCOMPONENTS @fvdycore
   DEPENDENCIES ${dependencies}
-  DEPENDENCIES ${GFDL})
+  DEPENDENCIES ${GFDL}
+  INCLUDES ${INC_ESMF})
+
+if (FV_PRECISION STREQUAL R4)
+   set (GFDL fms_r4)
+elseif (FV_PRECISION STREQUAL R4R8) # FV is R4 but FMS is R8
+   get_target_property (extra_incs fms_r4 INCLUDE_DIRECTORIES)
+   target_include_directories(${this} PUBLIC ${extra_incs})
+   set (GFDL fms_r8)
+elseif (FV_PRECISION STREQUAL R8)
+   set (GFDL fms_r8)
+endif ()
 
 if (FV_PRECISION MATCHES R4)
   target_compile_definitions (${this} PRIVATE -DSINGLE_FV -DOVERLOAD_R4)
