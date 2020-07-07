@@ -43,6 +43,13 @@ esma_add_library (${this}
   DEPENDENCIES ${GFDL}
   INCLUDES ${INC_ESMF})
 
+esma_add_library (${this}
+  SRCS ${srcs}
+  SUBCOMPONENTS @fvdycore
+  DEPENDENCIES ${dependencies}
+  DEPENDENCIES ${GFDL}
+  INCLUDES ${INC_ESMF})
+
 if (FV_PRECISION STREQUAL R4)
    set (GFDL fms_r4)
 elseif (FV_PRECISION STREQUAL R4R8) # FV is R4 but FMS is R8
@@ -52,6 +59,7 @@ elseif (FV_PRECISION STREQUAL R4R8) # FV is R4 but FMS is R8
 elseif (FV_PRECISION STREQUAL R8)
    set (GFDL fms_r8)
 endif ()
+
 
 if (FV_PRECISION MATCHES R4)
   target_compile_definitions (${this} PRIVATE -DSINGLE_FV -DOVERLOAD_R4)
