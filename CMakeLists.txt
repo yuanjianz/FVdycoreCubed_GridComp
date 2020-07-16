@@ -32,16 +32,19 @@ set (srcs
   GEOS_FV3_Utilities.F90
 )
 
+# Customize for GCHP
 #set(dependencies MAPL_Base gftl-shared GMAO_hermes GEOS_Shared)
 add_subdirectory(fvdycore)
-set(dependencies MAPL.base gftl-shared GMAO_hermes GEOS_Shared fvdycore)
+set(dependencies MAPL.base gftl-shared GMAO_hermes GEOS_Shared fvdycore ESMF)
 
 esma_add_library (${this}
   SRCS ${srcs}
   #SUBCOMPONENTS @fvdycore
   DEPENDENCIES ${dependencies}
   DEPENDENCIES ${GFDL}
-  INCLUDES ${INC_ESMF})
+  # Comment out for GCHP. List ESMF in dependencies instead.
+  #INCLUDES ${INC_ESMF}
+)
 
 if (FV_PRECISION STREQUAL R4)
    set (GFDL fms_r4)
