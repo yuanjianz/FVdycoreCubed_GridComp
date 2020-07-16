@@ -1,48 +1,35 @@
 esma_set_this ()
 
-# Customize for GCHP to speed up build
-#set (srcs
-#  sw.f90 jw.f90 testcases_3_4_5_6_stand_alone.f90
-#  GetWeightsC2C.F90
-#  GetWeights.F90
-#  CubeHalo.F90
-#  Cube2LatLon.F90 LatLon2Cube.F90 AppGridCreate.F90 FV_StateMod.F90
-#  AdvCore_GridCompMod.F90
-#  DynCore_GridCompMod.F90 CreateInterpWeights_GridCompMod.F90
-#  StandAlone_DynAdvCore_GridCompMod.F90
-#  CubeToLatLonRegridder.F90 
-#  LatLonToCubeRegridder.F90 
-#  CubeToCubeRegridder.F90
-#  CubeToLatLon.F90 
-#  CubeGridPrototype.F90
-#  GEOS_FV3_Utilities.F90
-#  )
+# GCHP: do not include certain files that are not needed
 set (srcs
+  #sw.f90 jw.f90 testcases_3_4_5_6_stand_alone.f90
   GetWeightsC2C.F90
   GetWeights.F90
   CubeHalo.F90
   Cube2LatLon.F90 LatLon2Cube.F90 AppGridCreate.F90 FV_StateMod.F90
   AdvCore_GridCompMod.F90
+  #DynCore_GridCompMod.F90
   CreateInterpWeights_GridCompMod.F90
+  #StandAlone_DynAdvCore_GridCompMod.F90
   CubeToLatLonRegridder.F90 
   LatLonToCubeRegridder.F90 
   CubeToCubeRegridder.F90
-  CubeGridPrototype.F90
   CubeToLatLon.F90 
+  CubeGridPrototype.F90
   GEOS_FV3_Utilities.F90
-)
+  )
 
-# Customize for GCHP
+# GCHP: add fvdycore subdirectory and and fvdore and ESMF to dependencies list
 #set(dependencies MAPL_Base gftl-shared GMAO_hermes GEOS_Shared)
 add_subdirectory(fvdycore)
 set(dependencies MAPL.base gftl-shared GMAO_hermes GEOS_Shared fvdycore ESMF)
 
+# GCHP: do not add fvdycore to subcomponents and ESMF_INC to includes
 esma_add_library (${this}
   SRCS ${srcs}
   #SUBCOMPONENTS @fvdycore
   DEPENDENCIES ${dependencies}
   DEPENDENCIES ${GFDL}
-  # Comment out for GCHP. List ESMF in dependencies instead.
   #INCLUDES ${INC_ESMF}
 )
 
@@ -76,7 +63,7 @@ foreach(flag ${tmp})
    target_compile_options (${this} PRIVATE $<$<COMPILE_LANGUAGE:Fortran>:${flag}>)
 endforeach()
 
-# Not needed for GCHP
+# GCHP: do not add executables
 #ecbuild_add_executable (
 #  TARGET StandAlone_FV3_Dycore.x
 #  SOURCES StandAlone_FV3_Dycore.F90
