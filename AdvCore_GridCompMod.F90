@@ -78,6 +78,10 @@ module AdvCore_GridCompMod
       logical     :: FV3_DynCoreIsRunning=.false.
       integer     :: AdvCore_Advection=1
       logical     :: chk_mass=.false.
+#ifdef ADJOINT
+      logical                    :: isAdjoint=.false.
+      character(len=ESMF_MAXSTR) :: modelPhase
+#endif
 
       integer,  parameter :: ntiles_per_pe = 1
 
@@ -355,6 +359,14 @@ contains
       VERIFY_(STATUS)
       DT = ndt
 
+#ifdef ADJOINT
+      call MAPL_GetResource( MAPL, modelPhase, 'MODEL_PHASE:', default='FORWARD', RC=STATUS )
+      _VERIFY(STATUS)
+      isAdjoint = .false.
+      if (trim(ModelPhase) == 'ADJOINT') &
+           isAdjoint = .true.
+      if (isAdjoint) dt = -dt
+#endif
       ! Start up FV if AdvCore is running without FV3_DynCoreIsRunning
       !--------------------------------------------------
       if (.NOT. FV3_DynCoreIsRunning) then
@@ -555,6 +567,13 @@ contains
       character(len=ESMF_MAXSTR), allocatable :: xlist(:)
       character(len=ESMF_MAXSTR), allocatable :: biggerlist(:)
       integer, parameter                  :: XLIST_MAX = 60
+
+#ifdef ADJOINT
+!     reverse time debug info
+      integer, parameter                :: DI = 3, DJ = 4, DL = 5
+      ! Debug variables
+      INTEGER, parameter             :: I_DBG = 6, J_DBG = 5, L_DBG=1
+#endif
 
 ! Get my name and set-up traceback handle
 ! ---------------------------------------
@@ -830,11 +849,22 @@ contains
             endif
 
          endif
+#ifdef ADJOINT
+         if (.not. isAdjoint) &
+#endif
          firstRun=.false.
 
          ! Run FV3 advection
          !------------------
+#ifdef ADJOINT
+         if (AdvCore_Advection>0 .and. .not. firstRun) then
+         IF (MAPL_Am_I_Root()) THEN
+            WRITE(*,546) dt
+546         FORMAT(' calling offline_tracer_advection with timestep = ', f8.3)
+         ENDIF
+#else
          if (AdvCore_Advection>0) then
+#endif
          ! GCHP: use dry instead of moist pressure
          !call offline_tracer_advection(TRACERS, PLE0, PLE1, MFX, MFY, CX, CY, &
          call offline_tracer_advection(TRACERS, DryPLE0, DryPLE1, MFX, MFY, CX, CY, &
@@ -843,6 +873,10 @@ contains
                                        FV_Atm(1)%domain, AK, BK, PTOP, FV_Atm(1)%npx, FV_Atm(1)%npy, FV_Atm(1)%npz,   &
                                        NQ, dt)
          endif
+#ifdef ADJOINT
+         if (isAdjoint) &
+              firstRun = .false.
+#endif
 
          ! Update tracer mass conservation
          !-------------------------------------------------------------------------
