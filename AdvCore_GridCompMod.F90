@@ -1,4 +1,4 @@
- !------------------------------------------------------------------------------
+!------------------------------------------------------------------------------
 #include "MAPL_Generic.h"
 !
 !------------------------------------------------------------------------------
@@ -262,9 +262,7 @@ contains
 
 ! 3D Tracers
      do ntracer=1,ntracers
-        ! GCHP: fix string formatting bug caught with debug flags on
-        !write(myTracer, "('TEST_TRACER',i1.1)") ntracer-1
-        write(myTracer, "('TEST_TRACER',i2.2)") ntracer-1
+        write(myTracer, "('TEST_TRACER',i5.5)") ntracer-1
         call MAPL_AddExportSpec ( gc,                             &
              SHORT_NAME = TRIM(myTracer),                         &
              LONG_NAME  = TRIM(myTracer),                         &
@@ -922,17 +920,11 @@ contains
                advTracers(N)%content    = TRACERS(:,:,:,N)
             end if
 ! Fill Export States
-            if ( N <= ntracers ) then
-               ! GCHP: fix string formatting bug caught with debug flags on
-               !write(myTracer, "('TEST_TRACER',i1.1)") N-1
-               write(myTracer, "('TEST_TRACER',i2.2)") N-1
-               call MAPL_GetPointer(EXPORT, temp3D, TRIM(myTracer), rc=status)
-               VERIFY_(STATUS)
-               ! GCHP: move N conditional higher up to avoid bug if debug on
-               !if ((associated(temp3D)) .and. (N<=ntracers)) then
-               if ( associated(temp3D) ) then
-                  temp3D = TRACERS(:,:,:,N)
-               endif
+            write(myTracer, "('TEST_TRACER',i5.5)") N-1
+            call MAPL_GetPointer(EXPORT, temp3D, TRIM(myTracer), rc=status)
+            VERIFY_(STATUS)
+            if ((associated(temp3D)) .and. (N<=ntracers)) then
+               temp3D = TRACERS(:,:,:,N)
             endif
          enddo
 
