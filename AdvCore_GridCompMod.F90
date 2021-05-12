@@ -817,6 +817,7 @@ contains
                advTracers(N)%content => tracer_r8
                TRACERS(:,:,:,N) = advTracers(N)%content
             end if
+
          end do
 
          if (NQ /= NQ_SAVED) then
@@ -847,6 +848,7 @@ contains
             endif
 
          endif
+
 #ifdef ADJOINT
          if (.not. isAdjoint) &
 #endif
@@ -863,6 +865,7 @@ contains
 #else
          if (AdvCore_Advection>0) then
 #endif
+
          ! GCHP: use dry instead of moist pressure
          !call offline_tracer_advection(TRACERS, PLE0, PLE1, MFX, MFY, CX, CY, &
          call offline_tracer_advection(TRACERS, DryPLE0, DryPLE1, MFX, MFY, CX, CY, &
@@ -913,6 +916,7 @@ contains
 
          ! Go through the bundle copying tracers back to the bundle.
          !-------------------------------------------------------------------------
+
          do N=1,NQ
             if (advTracers(N)%is_r4) then
                advTracers(N)%content_r4 = TRACERS(:,:,:,N)
@@ -920,11 +924,16 @@ contains
                advTracers(N)%content    = TRACERS(:,:,:,N)
             end if
 ! Fill Export States
-            write(myTracer, "('TEST_TRACER',i5.5)") N-1
-            call MAPL_GetPointer(EXPORT, temp3D, TRIM(myTracer), rc=status)
-            VERIFY_(STATUS)
-            if ((associated(temp3D)) .and. (N<=ntracers)) then
-               temp3D = TRACERS(:,:,:,N)
+
+            if ( N <= ntracers ) then
+               write(myTracer, "('TEST_TRACER',i5.5)") N-1
+               call MAPL_GetPointer(EXPORT, temp3D, TRIM(myTracer), rc=status)
+               VERIFY_(STATUS)
+               ! GCHP: move N conditional higher up to avoid bug if debug on
+               !if ((associated(temp3D)) .and. (N<=ntracers)) then
+               if ( associated(temp3D) ) then
+                  temp3D = TRACERS(:,:,:,N)
+               endif
             endif
          enddo
 
