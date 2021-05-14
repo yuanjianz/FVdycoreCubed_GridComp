@@ -1,4 +1,4 @@
- !------------------------------------------------------------------------------
+!------------------------------------------------------------------------------
 #include "MAPL_Generic.h"
 !
 !------------------------------------------------------------------------------
@@ -262,9 +262,7 @@ contains
 
 ! 3D Tracers
      do ntracer=1,ntracers
-        ! GCHP: fix string formatting bug caught with debug flags on
-        !write(myTracer, "('TEST_TRACER',i1.1)") ntracer-1
-        write(myTracer, "('TEST_TRACER',i2.2)") ntracer-1
+        write(myTracer, "('TEST_TRACER',i5.5)") ntracer-1
         call MAPL_AddExportSpec ( gc,                             &
              SHORT_NAME = TRIM(myTracer),                         &
              LONG_NAME  = TRIM(myTracer),                         &
@@ -819,6 +817,7 @@ contains
                advTracers(N)%content => tracer_r8
                TRACERS(:,:,:,N) = advTracers(N)%content
             end if
+
          end do
 
          if (NQ /= NQ_SAVED) then
@@ -849,6 +848,7 @@ contains
             endif
 
          endif
+
 #ifdef ADJOINT
          if (.not. isAdjoint) &
 #endif
@@ -865,6 +865,7 @@ contains
 #else
          if (AdvCore_Advection>0) then
 #endif
+
          ! GCHP: use dry instead of moist pressure
          !call offline_tracer_advection(TRACERS, PLE0, PLE1, MFX, MFY, CX, CY, &
          call offline_tracer_advection(TRACERS, DryPLE0, DryPLE1, MFX, MFY, CX, CY, &
@@ -915,6 +916,7 @@ contains
 
          ! Go through the bundle copying tracers back to the bundle.
          !-------------------------------------------------------------------------
+
          do N=1,NQ
             if (advTracers(N)%is_r4) then
                advTracers(N)%content_r4 = TRACERS(:,:,:,N)
@@ -922,10 +924,9 @@ contains
                advTracers(N)%content    = TRACERS(:,:,:,N)
             end if
 ! Fill Export States
+
             if ( N <= ntracers ) then
-               ! GCHP: fix string formatting bug caught with debug flags on
-               !write(myTracer, "('TEST_TRACER',i1.1)") N-1
-               write(myTracer, "('TEST_TRACER',i2.2)") N-1
+               write(myTracer, "('TEST_TRACER',i5.5)") N-1
                call MAPL_GetPointer(EXPORT, temp3D, TRIM(myTracer), rc=status)
                VERIFY_(STATUS)
                ! GCHP: move N conditional higher up to avoid bug if debug on

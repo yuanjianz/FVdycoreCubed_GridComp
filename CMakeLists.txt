@@ -19,10 +19,18 @@ set (srcs
   GEOS_FV3_Utilities.F90
   )
 
-# GCHP: add fvdycore subdirectory and and fvdore and ESMF to dependencies list
-#set(dependencies MAPL_Base gftl-shared GMAO_hermes GEOS_Shared)
+# GCHP: add fvdycore subdirectory
 add_subdirectory(fvdycore)
-set(dependencies MAPL.base gftl-shared GMAO_hermes GEOS_Shared fvdycore ESMF)
+
+if (ESMA_USE_GFE_NAMESPACE)
+  # GCHP: add fvdycore and ESMF to dependencies list
+  #set(dependencies MAPL GFTL_SHARED::gftl-shared GMAO_hermes GEOS_Shared)
+  set(dependencies MAPL GFTL_SHARED::gftl-shared GMAO_hermes GEOS_Shared fvdycore ESMF)
+else ()
+  # GCHP: add fvdycore and ESMF to dependencies list
+  #set(dependencies MAPL gftl-shared GMAO_hermes GEOS_Shared)
+  set(dependencies MAPL gftl-shared GMAO_hermes GEOS_Shared fvdycore ESMF)
+endif ()
 
 # GCHP: do not add fvdycore to subcomponents and ESMF_INC to includes
 esma_add_library (${this}
@@ -37,7 +45,9 @@ if (FV_PRECISION STREQUAL R4)
    set (GFDL fms_r4)
 elseif (FV_PRECISION STREQUAL R4R8) # FV is R4 but FMS is R8
    get_target_property (extra_incs fms_r4 INCLUDE_DIRECTORIES)
-   target_include_directories(${this} PUBLIC ${extra_incs})
+   target_include_directories(${this} PRIVATE
+   $<BUILD_INTERFACE:${extra_incs}>
+   )
    set (GFDL fms_r8)
 elseif (FV_PRECISION STREQUAL R8)
    set (GFDL fms_r8)
@@ -63,7 +73,7 @@ foreach(flag ${tmp})
    target_compile_options (${this} PRIVATE $<$<COMPILE_LANGUAGE:Fortran>:${flag}>)
 endforeach()
 
-# GCHP: do not add executables
+# GCHP: do not add executables or subdirectory scripts
 #ecbuild_add_executable (
 #  TARGET StandAlone_FV3_Dycore.x
 #  SOURCES StandAlone_FV3_Dycore.F90
@@ -99,3 +109,5 @@ endforeach()
 #   SOURCES interp_restarts.F90
 #   LIBS ${this})
 #set_target_properties (interp_restarts.x PROPERTIES LINK_FLAGS "${OpenMP_Fortran_FLAGS}")
+#
+#add_subdirectory(scripts)
