@@ -652,7 +652,7 @@ contains
             end if
          end if
       else
-         call WRITE_PARALLEL('Invalid option, ignored')
+         !call WRITE_PARALLEL('Invalid option, ignored')
          adjustTracers = .false.
       end if
       if (adjustTracers) then
