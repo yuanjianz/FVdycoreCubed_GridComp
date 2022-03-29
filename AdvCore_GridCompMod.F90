@@ -651,6 +651,9 @@ contains
                adjustTracers = .true.
             end if
          end if
+      else if (adjustTracerMode == 'NO') then
+         ! Proceed without warning
+         adjustTracers = .false.
       else
          !call WRITE_PARALLEL('Invalid option, ignored')
          adjustTracers = .false.
@@ -904,17 +907,17 @@ contains
             else
                advTracers(N)%content    = TRACERS(:,:,:,N)
             end if
-! Fill Export States
 
-            if ( N <= ntracers ) then
+            !-----------------------------------------------
+            !--> Fill Export States
+            !--> This section is used for diagnostics only.
+            !--> It has no effect on CTM experiments.
+            !-----------------------------------------------
+            if (N<=ntracers) then
                write(myTracer, "('TEST_TRACER',i5.5)") N-1
                call MAPL_GetPointer(EXPORT, temp3D, TRIM(myTracer), rc=status)
                VERIFY_(STATUS)
-               ! GCHP: move N conditional higher up to avoid bug if debug on
-               !if ((associated(temp3D)) .and. (N<=ntracers)) then
-               if ( associated(temp3D) ) then
-                  temp3D = TRACERS(:,:,:,N)
-               endif
+               if (associated(temp3D)) temp3D = TRACERS(:,:,:,N)
             endif
          enddo
 
