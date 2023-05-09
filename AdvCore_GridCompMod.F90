@@ -77,6 +77,7 @@ module AdvCore_GridCompMod
       real(FVPRC) :: dt
       logical     :: FV3_DynCoreIsRunning=.false.
       integer     :: AdvCore_Advection=1
+      integer     :: Use_Total_Air_Pressure
       logical     :: chk_mass=.false.
 #ifdef ADJOINT
       logical                    :: isAdjoint=.false.
@@ -210,8 +211,28 @@ contains
         DATATYPE   = MAPL_BundleItem,               &
         RC=STATUS  )
     VERIFY_(STATUS)
+    ! For using dry pressure
+    !-----------------------------------------------
+    call MAPL_AddImportSpec ( gc,                                  &
+         SHORT_NAME = 'DryPLE0',                                   &
+         LONG_NAME  = 'dry_pressure_at_layer_edges_before_advection',&
+         UNITS      = 'Pa',                                        &
+         PRECISION  = ESMF_KIND_R8,                                &
+         DIMS       = MAPL_DimsHorzVert,                           &
+         VLOCATION  = MAPL_VLocationEdge,             RC=STATUS  )
+     VERIFY_(STATUS)
 
-   ! GCHP: add pre-advection specific humidity
+    call MAPL_AddImportSpec ( gc,                                  &
+         SHORT_NAME = 'DryPLE1',                                   &
+         LONG_NAME  = 'dry_pressure_at_layer_edges_after_advection',&
+         UNITS      = 'Pa',                                        &
+         PRECISION  = ESMF_KIND_R8,                                &
+         DIMS       = MAPL_DimsHorzVert,                           &
+         VLOCATION  = MAPL_VLocationEdge,             RC=STATUS  )
+     VERIFY_(STATUS)
+
+    ! For using total pressure
+    !-----------------------------------------------
     call MAPL_AddImportSpec ( gc,                                  &
          SHORT_NAME = 'SPHU0',                                     &
          LONG_NAME  = 'specific_humidity_before_advection',        &
@@ -219,7 +240,7 @@ contains
          PRECISION  = ESMF_KIND_R8,                                &
          DIMS       = MAPL_DimsHorzVert,                           &
          VLOCATION  = MAPL_VLocationCenter,           RC=STATUS  )
-    _VERIFY(STATUS)
+    VERIFY_(STATUS)
 
   !EXPORT STATE:
      call MAPL_AddExportSpec ( gc,                                  &
@@ -240,7 +261,18 @@ contains
           VLOCATION  = MAPL_VLocationEdge,               RC=STATUS  )
      VERIFY_(STATUS)
 
-! 3D Tracers
+     ! For using dry pressure
+     !-----------------------------------------------
+     call MAPL_AddExportSpec ( gc,                                  &
+          SHORT_NAME = 'DryPLE',                                    &
+          LONG_NAME  = 'dry_pressure_at_layer_edges',               &
+          UNITS      = 'Pa'   ,                                     &
+          PRECISION  = ESMF_KIND_R8,                                &
+          DIMS       = MAPL_DimsHorzVert,                           &
+          VLOCATION  = MAPL_VLocationEdge,               RC=STATUS  )
+     VERIFY_(STATUS) 
+
+     ! 3D Tracers
      do ntracer=1,ntracers
         write(myTracer, "('TEST_TRACER',i5.5)") ntracer-1
         call MAPL_AddExportSpec ( gc,                             &
@@ -287,6 +319,15 @@ contains
       VERIFY_(STATUS)
       if(adjustl(DYCORE)=="FV3") FV3_DynCoreIsRunning = .true.
       if(adjustl(DYCORE)=="FV3+ADV") FV3_DynCoreIsRunning = .true.
+
+      ! Check if using total air pressure. If not then use dry air pressure.
+      ! 1 = total air pressure; 0 = dry air pressure
+      ! -----------------------------------------------------------------
+      call MAPL_GetResource(MAPL,                                         &
+                            Use_Total_Air_Pressure,                       &
+                            label='Use_Total_Air_Pressure_in_Advection:', &
+                            default=1,                                    &
+                            RC=STATUS )
 
       ! Start up FMS/MPP
       !-------------------------------------------
@@ -494,10 +535,13 @@ contains
       REAL(REAL8), POINTER, DIMENSION(:,:,:)   :: iMFY
       REAL(REAL8), POINTER, DIMENSION(:,:,:)   :: iPLE0
       REAL(REAL8), POINTER, DIMENSION(:,:,:)   :: iPLE1
-      REAL(REAL8), POINTER, DIMENSION(:,:,:)   :: iSPHU0   ! GCHP
+      REAL(REAL8), POINTER, DIMENSION(:,:,:)   :: iDryPLE0 ! GCHP dry
+      REAL(REAL8), POINTER, DIMENSION(:,:,:)   :: iDryPLE1 ! GCHP dry
+      REAL(REAL8), POINTER, DIMENSION(:,:,:)   :: iSPHU0   ! GCHP total
 
 ! Exports
       REAL(REAL8), POINTER, DIMENSION(:,:,:)   :: ePLE     ! GCHP
+      REAL(REAL8), POINTER, DIMENSION(:,:,:)   :: eDryPLE  ! GCHP dry
 
 ! Locals
       REAL(FVPRC), POINTER, DIMENSION(:,:,:)   :: CX
@@ -506,8 +550,10 @@ contains
       REAL(FVPRC), POINTER, DIMENSION(:,:,:)   :: MFY
       REAL(FVPRC), POINTER, DIMENSION(:,:,:)   :: PLE0
       REAL(FVPRC), POINTER, DIMENSION(:,:,:)   :: PLE1
-      REAL(FVPRC), POINTER, DIMENSION(:,:,:)   :: PLEAdv  ! GCHP
-      REAL(FVPRC), POINTER, DIMENSION(:,:,:)   :: SPHU0   ! GCHP
+      REAL(FVPRC), POINTER, DIMENSION(:,:,:)   :: DryPLE0 ! GCHP dry
+      REAL(FVPRC), POINTER, DIMENSION(:,:,:)   :: DryPLE1 ! GCHP dry
+      REAL(FVPRC), POINTER, DIMENSION(:,:,:)   :: PLEAdv  ! GCHP total
+      REAL(FVPRC), POINTER, DIMENSION(:,:,:)   :: SPHU0   ! GCHP total
       REAL(FVPRC), POINTER, DIMENSION(:)       :: AK
       REAL(FVPRC), POINTER, DIMENSION(:)       :: BK
       REAL(REAL8), allocatable :: ak_r8(:),bk_r8(:)
@@ -601,20 +647,32 @@ contains
       VERIFY_(STATUS)
       CALL MAPL_GetPointer(IMPORT, iCY,     'CY', ALLOC = .TRUE., RC=STATUS)
       VERIFY_(STATUS)
-      CALL MAPL_GetPointer(IMPORT, iSPHU0,'SPHU0',ALLOC = .TRUE., RC=STATUS)
-      VERIFY_(STATUS)
+
+      ! Using dry versus total air in GCHP
+      IF ( Use_Total_Air_Pressure > 0 ) THEN
+         CALL MAPL_GetPointer(IMPORT,iSPHU0,'SPHU0',ALLOC = .TRUE.,RC=STATUS)
+         VERIFY_(STATUS)
+         ALLOCATE( SPHU0(IM,JM,LM  ) )
+         SPHU0   = iSPHU0
+         ALLOCATE( PLEAdv(IM,JM,LM+1) )
+         PLEAdv  = 0.0d0    ! for safety
+      ELSE
+         CALL MAPL_GetPointer(IMPORT,iDryPLE0,'DryPLE0',ALLOC=.TRUE.,RC=STATUS)
+         VERIFY_(STATUS)
+         CALL MAPL_GetPointer(IMPORT,iDryPLE1,'DryPLE1',ALLOC=.TRUE.,RC=STATUS)
+         VERIFY_(STATUS)
+         ALLOCATE( DryPLE0(IM,JM,LM+1) )
+         ALLOCATE( DryPLE1(IM,JM,LM+1) )
+         DryPLE0 = iDryPLE0
+         DryPLE1 = iDryPLE1
+      ENDIF
 
       ALLOCATE( PLE0(IM,JM,LM+1) )
       ALLOCATE( PLE1(IM,JM,LM+1) )
-      ALLOCATE( PLEAdv(IM,JM,LM+1) )  ! GCHP
       ALLOCATE(  MFX(IM,JM,LM  ) )
       ALLOCATE(  MFY(IM,JM,LM  ) )
       ALLOCATE(   CX(IM,JM,LM  ) )
       ALLOCATE(   CY(IM,JM,LM  ) )
-      ALLOCATE(SPHU0(IM,JM,LM  ) )
-
-      ! For safety
-      PLEAdv = 0.0d0
 
       PLE0 = iPLE0
       PLE1 = iPLE1
@@ -622,7 +680,6 @@ contains
        MFY = iMFY
         CX = iCX
         CY = iCY
-      SPHU0 = iSPHU0
 
       ! The quantities to be advected come as friendlies in a bundle
       !  in the import state.
@@ -756,15 +813,21 @@ contains
       call ESMF_FieldBundleGet(TRADV, fieldCount=NQ,    rc=STATUS)
       VERIFY_(STATUS)
 
-      ! Add an extra advected tracer for water
-      nadv = nq + 1
+      ! GCHP: If using total air then add one tracer for moisture for use in
+      ! post-advection MMR conversion from total to dry air
+      IF ( Use_Total_Air_Pressure > 0 ) THEN
+         NAdv = nq + 1
+      ELSE
+         NAdv = nq
+      ENDIF
 
       if (NQ > 0) then
-         ! We allocate a list of tracers big enough to hold all items in the bundle
-         !-------------------------------------------------------------------------
-         ALLOCATE( TRACERS(IM,JM,LM,NAdv),stat=STATUS )
+
+         ! Allocate list of tracers big enough to hold all items in the bundle
+         !--------------------------------------------------------------------
+         ALLOCATE( TRACERS(IM,JM,LM,NAdv),stat=STATUS ) ! Includes SPHU tracer
          VERIFY_(STATUS)
-         ALLOCATE( advTracers(NQ),stat=STATUS )
+         ALLOCATE( advTracers(NQ),stat=STATUS ) ! Does not include SPHU tracer
          VERIFY_(STATUS)
 
          if (NQ /= NQ_SAVED) then
@@ -802,28 +865,77 @@ contains
 
          end do
 
-         ! Need to carry specific humidity
-         tracers(:,:,:,nq+1) = sphu0(:,:,:)
-         ! Convert tracers from kg/kg dry to kg/kg total
-         Do N=1,NQ
-            tracers(:,:,:,N) = tracers(:,:,:,N) * (1.0 - sphu0)
-         End Do
+         ! If using total air then set extra tracer to specific humidity and
+         ! convert all other tracers from kg/kg dry to kg/kg total air
+         if ( Use_Total_Air_Pressure > 0 ) then
+            tracers(:,:,:,nq+1) = sphu0(:,:,:)
+            do N=1,NQ
+               tracers(:,:,:,N) = tracers(:,:,:,N) * (1.0 - sphu0)
+            enddo
+          endif
 
          if (NQ /= NQ_SAVED) then
             NQ_SAVED = NQ
          end if
 
+         ! Check Mass conservation
          if (chk_mass) then
-        ! Check Mass conservation
 
-            ! Use total pressure
+            ! Compute mass differently based on whether advection on or off,
+            ! and whether using total or dry air pressure
             if (firstRun .and. AdvCore_Advection>0) then
-               MASS0 = g_sum(FV_Atm(1)%domain, PLE0(:,:,LM), is,ie, js,je, FV_Atm(1)%ng, FV_Atm(1)%gridstruct%area_64, 1, .true.)
-               call global_integral(TMASS0, TRACERS, PLE0, IM,JM,LM,NAdv)
+               if ( Use_Total_Air_Pressure > 0 ) then
+                  MASS0 = g_sum( FV_Atm(1)%domain,            &
+                                 PLE0(:,:,LM),                &
+                                 is,                          &
+                                 ie,                          &
+                                 js,                          &
+                                 je,                          &
+                                 FV_Atm(1)%ng,                &
+                                 FV_Atm(1)%gridstruct%area_64,&
+                                 1,                           &
+                                 .true. )
+                  call global_integral(TMASS0, TRACERS, PLE0, IM,JM,LM,NAdv)
+               else
+                  MASS0 = g_sum( FV_Atm(1)%domain,            &
+                                 DryPLE0(:,:,LM),             &
+                                 is,                          &
+                                 ie,                          &
+                                 js,                          &
+                                 je,                          &
+                                 FV_Atm(1)%ng,                &
+                                 FV_Atm(1)%gridstruct%area_64,&
+                                 1,                           &
+                                 .true. )
+                  call global_integral(TMASS0, TRACERS, DryPLE0, IM,JM,LM,NAdv)
+               endif
                if (MASS0 /= 0.0) TMASS0=TMASS0/MASS0
             elseif (firstRun) then
-               MASS0 = g_sum(FV_Atm(1)%domain, PLE1(:,:,LM), is,ie, js,je, FV_Atm(1)%ng, FV_Atm(1)%gridstruct%area_64, 1, .true.)
-               call global_integral(TMASS0, TRACERS, PLE1, IM,JM,LM,NAdv)
+               if ( Use_Total_Air_Pressure > 0 ) then
+                  MASS0 = g_sum( FV_Atm(1)%domain,            &
+                                 PLE1(:,:,LM),                &
+                                 is,                          &
+                                 ie,                          &
+                                 js,                          &
+                                 je,                          &
+                                 FV_Atm(1)%ng,                &
+                                 FV_Atm(1)%gridstruct%area_64,&
+                                 1,                           &
+                                 .true. )
+                  call global_integral(TMASS0, TRACERS, PLE1, IM,JM,LM,NAdv)
+               else
+                  MASS0 = g_sum( FV_Atm(1)%domain,            &
+                                 DryPLE1(:,:,LM),             &
+                                 is,                          &
+                                 ie,                          &
+                                 js,                          &
+                                 je,                          &
+                                 FV_Atm(1)%ng,                &
+                                 FV_Atm(1)%gridstruct%area_64,&
+                                 1,                           &
+                                .true.)
+                  call global_integral(TMASS0, TRACERS, DryPLE1, IM,JM,LM,NQ)
+               endif
                if (MASS0 /= 0.0) TMASS0=TMASS0/MASS0
             endif
 
@@ -846,13 +958,49 @@ contains
          if (AdvCore_Advection>0) then
 #endif
 
-         ! Use total pressure
-         call offline_tracer_advection(TRACERS, PLE0, PLE1, MFX, MFY, CX, CY, &
-                                       FV_Atm(1)%gridstruct, FV_Atm(1)%flagstruct, FV_Atm(1)%bd, &
-                                       FV_Atm(1)%domain, AK, BK, PTOP, &
-                                       FV_Atm(1)%npx, FV_Atm(1)%npy, FV_Atm(1)%npz, &
-                                       NAdv, dt, PLEAdv )
-
+            ! Run offline advection
+            if ( Use_Total_Air_Pressure > 0 ) then
+               call offline_tracer_advection( TRACERS,              &
+                                              PLE0,                 &
+                                              PLE1,                 &
+                                              MFX,                  &
+                                              MFY,                  &
+                                              CX,                   &
+                                              CY,                   &
+                                              FV_Atm(1)%gridstruct, &
+                                              FV_Atm(1)%flagstruct, &
+                                              FV_Atm(1)%bd,         &
+                                              FV_Atm(1)%domain,     &
+                                              AK,                   &
+                                              BK,                   &
+                                              PTOP,                 &
+                                              FV_Atm(1)%npx,        &
+                                              FV_Atm(1)%npy,        &
+                                              FV_Atm(1)%npz,        &
+                                              NAdv,                 &
+                                              dt,                   &
+                                              PLEAdv ) ! ewl: last one optional?
+            else
+               call offline_tracer_advection(TRACERS,              &
+                                             DryPLE0,              &
+                                             DryPLE1,              &
+                                             MFX,                  &
+                                             MFY,                  &
+                                             CX,                   &
+                                             CY,                   &
+                                             FV_Atm(1)%gridstruct, &
+                                             FV_Atm(1)%flagstruct, &
+                                             FV_Atm(1)%bd,         &
+                                             FV_Atm(1)%domain,     &
+                                             AK,                   &
+                                             BK,                   &
+                                             PTOP,                 &
+                                             FV_Atm(1)%npx,        &
+                                             FV_Atm(1)%npy,        &
+                                             FV_Atm(1)%npz,        &
+                                             NAdv,                 &
+                                             dt )
+            endif
          endif
 #ifdef ADJOINT
          if (isAdjoint) &
@@ -860,11 +1008,33 @@ contains
 #endif
 
          ! Update tracer mass conservation
-         !-------------------------------------------------------------------------
+         !-------------------------------------------------------------------
          if (chk_mass) then
-            ! Use total pressure
-            MASS1 = g_sum(FV_Atm(1)%domain, PLE1(:,:,LM), is,ie, js,je, FV_Atm(1)%ng, FV_Atm(1)%gridstruct%area_64, 1, .true.)
-            call global_integral(TMASS1, TRACERS, PLE1, IM, JM, LM, NAdv)
+            if ( Use_Total_Air_Pressure > 0 ) then
+               MASS1 = g_sum( FV_Atm(1)%domain, &
+                              PLE1(:,:,LM),                &
+                              is,                          &
+                              ie,                          &
+                              js,                          &
+                              je,                          &
+                              FV_Atm(1)%ng,                &
+                              FV_Atm(1)%gridstruct%area_64,&
+                              1,                           &
+                              .true.)
+               call global_integral(TMASS1, TRACERS, PLE1, IM, JM, LM, NAdv)
+            else
+               MASS1 = g_sum( FV_Atm(1)%domain,            &
+                              DryPLE1(:,:,LM),             &
+                              is,                          &
+                              ie,                          &
+                              js,                          &
+                              je,                          &
+                              FV_Atm(1)%ng,                &
+                              FV_Atm(1)%gridstruct%area_64,&
+                              1,                           &
+                              .true.)
+               call global_integral(TMASS1, TRACERS, DryPLE1, IM,JM,LM,NQ)
+            endif
             if (MASS1 /= 0.0) TMASS1=TMASS1/MASS1
          endif
 
@@ -892,11 +1062,15 @@ contains
  103        format('Tracer Mdif: ',e21.14,' ',e21.14,' ',e21.14,' ',e21.14,' ',e21.14)
          endif
 
-         ! Convert back from kg/kg total to kg/kg dry using advected
-         ! specific humidity tracer
-         Do N=1,NQ
-            TRACERS(:,:,:,N) = TRACERS(:,:,:,N) / (1.0d0 - TRACERS(:,:,:,NQ+1))
-         End Do
+         ! If using total air pressure then convert all tracers from kg/kg total
+         ! to kg/kg dry for use in GEOS-Chem. Use the post-advection specific
+         ! humidity tracer for the conversion.
+         if ( Use_Total_Air_Pressure > 0 ) then
+            do N=1,NQ
+               TRACERS(:,:,:,N) = TRACERS(:,:,:,N) &
+                                  / (1.0d0 - TRACERS(:,:,:,NQ+1))
+            enddo
+         endif
 
          ! Go through the bundle copying tracers back to the bundle.
          !-------------------------------------------------------------------------
@@ -928,7 +1102,13 @@ contains
 
       end if ! NQ > 0
 
-      ! GCHP: wet pressure edge exports
+      ! Pressure edge exports
+      if ( Use_Total_Air_Pressure < 1 ) then
+         call MAPL_GetPointer ( EXPORT, eDryPLE, 'DryPLE', ALLOC=.TRUE., &
+                                RC=STATUS )
+         _VERIFY(STATUS)
+         eDryPLE(:,:,:) = DryPLE1(:,:,:)
+      endif
       call MAPL_GetPointer ( EXPORT, ePLE, 'PLE', ALLOC=.TRUE., RC=STATUS )
       _VERIFY(STATUS)
       ePLE(:,:,:) = PLE1(:,:,:)
@@ -942,12 +1122,18 @@ contains
 
       DEALLOCATE( PLE0 )
       DEALLOCATE( PLE1 )
-      DEALLOCATE( PLEAdv )  ! GCHP
       DEALLOCATE(  MFX )
       DEALLOCATE(  MFY )
       DEALLOCATE(   CX )
       DEALLOCATE(   CY )
-      DEALLOCATE( SPHU0 )
+
+      if ( Use_Total_Air_Pressure > 0 ) then
+         DEALLOCATE( SPHU0 )
+         DEALLOCATE( PLEAdv )
+      else
+         DEALLOCATE( DryPLE0 )
+         DEALLOCATE( DryPLE1 )
+      endif
 
       call MAPL_TimerOff(MAPL,"RUN")
       call MAPL_TimerOff(MAPL,"TOTAL")
