@@ -336,7 +336,7 @@ contains
       ! -----------------------------------------------------------------
       call MAPL_GetResource(MAPL,                                         &
                             Use_Total_Air_Pressure,                       &
-                            label='Use_Total_Air_Pressure_in_Advection:', &
+                            label='USE_TOTAL_AIR_PRESSURE_IN_ADVECTION:', &
                             default=1,                                    &
                             RC=STATUS )
 
