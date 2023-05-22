@@ -337,7 +337,7 @@ contains
       call MAPL_GetResource(MAPL,                                         &
                             Use_Total_Air_Pressure,                       &
                             label='USE_TOTAL_AIR_PRESSURE_IN_ADVECTION:', &
-                            default=1,                                    &
+                            default=0,                                    &
                             RC=STATUS )
 
 
