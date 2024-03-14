@@ -252,7 +252,7 @@ contains
           VLOCATION  = MAPL_VLocationNone,               RC=STATUS  )
      VERIFY_(STATUS)
 
-     ! GCHP: add moist pressure export
+     ! GCHP: moist pressure export to pass to GEOS-Chem
      call MAPL_AddExportSpec ( gc,                                  &
           SHORT_NAME = 'PLE',                                       &
           LONG_NAME  = 'pressure_at_layer_edges',                   &
@@ -262,8 +262,7 @@ contains
           VLOCATION  = MAPL_VLocationEdge,               RC=STATUS  )
      VERIFY_(STATUS)
 
-     ! For using dry pressure
-     !-----------------------------------------------
+     ! GCHP: dry pressure export to pass to GEOS-Chem
      call MAPL_AddExportSpec ( gc,                                  &
           SHORT_NAME = 'DryPLE',                                    &
           LONG_NAME  = 'dry_pressure_at_layer_edges',               &
@@ -272,6 +271,16 @@ contains
           DIMS       = MAPL_DimsHorzVert,                           &
           VLOCATION  = MAPL_VLocationEdge,               RC=STATUS  )
      VERIFY_(STATUS) 
+
+     ! GCHP: for diagnostics
+     call MAPL_AddExportSpec ( gc,                                  &
+          SHORT_NAME = 'PLEadv',                                    &
+          LONG_NAME  = 'post_advection_pressure_at_layer_edges', &
+          UNITS      = 'Pa'   ,                                     &
+          PRECISION  = ESMF_KIND_R8,                                &
+          DIMS       = MAPL_DimsHorzVert,                           &
+          VLOCATION  = MAPL_VLocationEdge,               RC=STATUS  )
+     VERIFY_(STATUS)
 
      ! 3D Tracers
      do ntracer=1,ntracers
@@ -587,6 +596,7 @@ contains
 ! Exports
       REAL(REAL8), POINTER, DIMENSION(:,:,:)   :: ePLE     ! GCHP
       REAL(REAL8), POINTER, DIMENSION(:,:,:)   :: eDryPLE  ! GCHP dry
+      REAL(REAL8), POINTER, DIMENSION(:,:,:)   :: ePLEadv  ! GCHP
 
 ! Locals
       REAL(FVPRC), POINTER, DIMENSION(:,:,:)   :: CX
@@ -700,8 +710,6 @@ contains
          VERIFY_(STATUS)
          ALLOCATE( SPHU0(IM,JM,LM  ) )
          SPHU0   = iSPHU0
-         ALLOCATE( PLEAdv(IM,JM,LM+1) )
-         PLEAdv  = 0.0d0    ! for safety
       ELSE
          CALL MAPL_GetPointer(IMPORT,iDryPLE0,'DryPLE0',ALLOC=.TRUE.,RC=STATUS)
          VERIFY_(STATUS)
@@ -713,19 +721,21 @@ contains
          DryPLE1 = iDryPLE1
       ENDIF
 
-      ALLOCATE( PLE0(IM,JM,LM+1) )
-      ALLOCATE( PLE1(IM,JM,LM+1) )
-      ALLOCATE(  MFX(IM,JM,LM  ) )
-      ALLOCATE(  MFY(IM,JM,LM  ) )
-      ALLOCATE(   CX(IM,JM,LM  ) )
-      ALLOCATE(   CY(IM,JM,LM  ) )
+      ALLOCATE(  PLE0(IM,JM,LM+1) )
+      ALLOCATE(  PLE1(IM,JM,LM+1) )
+      ALLOCATE(PLEAdv(IM,JM,LM+1) )
+      ALLOCATE(   MFX(IM,JM,LM  ) )
+      ALLOCATE(   MFY(IM,JM,LM  ) )
+      ALLOCATE(    CX(IM,JM,LM  ) )
+      ALLOCATE(    CY(IM,JM,LM  ) )
 
-      PLE0 = iPLE0
-      PLE1 = iPLE1
-       MFX = iMFX
-       MFY = iMFY
-        CX = iCX
-        CY = iCY
+      PLE0   = iPLE0
+      PLE1   = iPLE1 
+      PLEAdv = 0.0d0
+      MFX    = iMFX
+      MFY    = iMFY
+      CX     = iCX
+      CY     = iCY
 
       ! The quantities to be advected come as friendlies in a bundle
       !  in the import state.
@@ -1031,7 +1041,7 @@ contains
                                               FV_Atm(1)%npz,        &
                                               NAdv,                 &
                                               dt,                   &
-                                              PLEAdv ) ! ewl: last one optional?
+                                              PLEAdv )
             else
                call offline_tracer_advection(TRACERS,              &
                                              DryPLE0,              &
@@ -1051,7 +1061,8 @@ contains
                                              FV_Atm(1)%npy,        &
                                              FV_Atm(1)%npz,        &
                                              NAdv,                 &
-                                             dt )
+                                             dt,                   &
+                                             PLEAdv )
             endif
          endif
 #ifdef ADJOINT
@@ -1164,6 +1175,9 @@ contains
       call MAPL_GetPointer ( EXPORT, ePLE, 'PLE', ALLOC=.TRUE., RC=STATUS )
       _VERIFY(STATUS)
       ePLE(:,:,:) = PLE1(:,:,:)
+      call MAPL_GetPointer ( EXPORT, ePLEadv, 'PLEadv', ALLOC=.TRUE., RC=STATUS )
+      _VERIFY(STATUS)
+      ePLEadv(:,:,:) = PLEadv(:,:,:)
 
       deallocate( advTracers, stat=STATUS )
       VERIFY_(STATUS)
@@ -1172,16 +1186,16 @@ contains
       DEALLOCATE( BK ,stat=STATUS )
       VERIFY_(STATUS)
 
-      DEALLOCATE( PLE0 )
-      DEALLOCATE( PLE1 )
-      DEALLOCATE(  MFX )
-      DEALLOCATE(  MFY )
-      DEALLOCATE(   CX )
-      DEALLOCATE(   CY )
+      DEALLOCATE( PLE0   )
+      DEALLOCATE( PLE1   )
+      DEALLOCATE( PLEAdv )
+      DEALLOCATE(  MFX   )
+      DEALLOCATE(  MFY   )
+      DEALLOCATE(   CX   )
+      DEALLOCATE(   CY   )
 
       if ( Use_Total_Air_Pressure > 0 ) then
          DEALLOCATE( SPHU0 )
-         DEALLOCATE( PLEAdv )
       else
          DEALLOCATE( DryPLE0 )
          DEALLOCATE( DryPLE1 )
