@@ -242,6 +242,14 @@ contains
          DIMS       = MAPL_DimsHorzVert,                           &
          VLOCATION  = MAPL_VLocationCenter,           RC=STATUS  )
     VERIFY_(STATUS)
+    call MAPL_AddImportSpec ( gc,                                  &
+         SHORT_NAME = 'SPHU1',                                     &
+         LONG_NAME  = 'specific_humidity_after_advection',        &
+         UNITS      = 'kg kg-1',                                   &
+         PRECISION  = ESMF_KIND_R8,                                &
+         DIMS       = MAPL_DimsHorzVert,                           &
+         VLOCATION  = MAPL_VLocationCenter,           RC=STATUS  )
+    VERIFY_(STATUS)
 
   !EXPORT STATE:
      call MAPL_AddExportSpec ( gc,                                  &
@@ -592,6 +600,7 @@ contains
       REAL(REAL8), POINTER, DIMENSION(:,:,:)   :: iDryPLE0 ! GCHP dry
       REAL(REAL8), POINTER, DIMENSION(:,:,:)   :: iDryPLE1 ! GCHP dry
       REAL(REAL8), POINTER, DIMENSION(:,:,:)   :: iSPHU0   ! GCHP total
+      REAL(REAL8), POINTER, DIMENSION(:,:,:)   :: iSPHU1   ! GCHP total
 
 ! Exports
       REAL(REAL8), POINTER, DIMENSION(:,:,:)   :: ePLE     ! GCHP
@@ -609,6 +618,7 @@ contains
       REAL(FVPRC), POINTER, DIMENSION(:,:,:)   :: DryPLE1 ! GCHP dry
       REAL(FVPRC), POINTER, DIMENSION(:,:,:)   :: PLEAdv  ! GCHP total
       REAL(FVPRC), POINTER, DIMENSION(:,:,:)   :: SPHU0   ! GCHP total
+      REAL(FVPRC), POINTER, DIMENSION(:,:,:)   :: SPHU1   ! GCHP total
       REAL(FVPRC), POINTER, DIMENSION(:)       :: AK
       REAL(FVPRC), POINTER, DIMENSION(:)       :: BK
       REAL(REAL8), allocatable :: ak_r8(:),bk_r8(:)
@@ -710,6 +720,10 @@ contains
          VERIFY_(STATUS)
          ALLOCATE( SPHU0(IM,JM,LM  ) )
          SPHU0   = iSPHU0
+         CALL MAPL_GetPointer(IMPORT,iSPHU1,'SPHU1',ALLOC = .TRUE.,RC=STATUS)
+         VERIFY_(STATUS)
+         ALLOCATE( SPHU1(IM,JM,LM  ) )
+         SPHU1   = iSPHU1
       ELSE
          CALL MAPL_GetPointer(IMPORT,iDryPLE0,'DryPLE0',ALLOC=.TRUE.,RC=STATUS)
          VERIFY_(STATUS)
@@ -1131,7 +1145,7 @@ contains
          if ( Use_Total_Air_Pressure > 0 ) then
             do N=1,NQ
                TRACERS(:,:,:,N) = TRACERS(:,:,:,N) &
-                                  / (1.0d0 - TRACERS(:,:,:,NQ+1))
+                                  / (1.0d0 - SPHU1)
             enddo
          endif
 
@@ -1196,6 +1210,7 @@ contains
 
       if ( Use_Total_Air_Pressure > 0 ) then
          DEALLOCATE( SPHU0 )
+         DEALLOCATE( SPHU1 )
       else
          DEALLOCATE( DryPLE0 )
          DEALLOCATE( DryPLE1 )
