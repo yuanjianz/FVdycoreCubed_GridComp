@@ -1055,7 +1055,8 @@ contains
                                               FV_Atm(1)%npz,        &
                                               NAdv,                 &
                                               dt,                   &
-                                              PLEAdv )
+                                              PLEAdv,               &
+                                              SPHU1 )
             else
                call offline_tracer_advection(TRACERS,              &
                                              DryPLE0,              &
@@ -1142,12 +1143,13 @@ contains
          ! If using total air pressure then convert all tracers from kg/kg total
          ! to kg/kg dry for use in GEOS-Chem. Use the post-advection specific
          ! humidity tracer for the conversion.
-         if ( Use_Total_Air_Pressure > 0 ) then
-            do N=1,NQ
-               TRACERS(:,:,:,N) = TRACERS(:,:,:,N) &
-                                  / (1.0d0 - TRACERS(:,:,:,NQ+1))
-            enddo
-         endif
+         ! already converted to dry mixing ratio in offline_advection
+         !if ( Use_Total_Air_Pressure > 0 ) then
+         !   do N=1,NQ
+         !      TRACERS(:,:,:,N) = TRACERS(:,:,:,N) &
+         !                  / (1.0d0 - TRACERS(:,:,:,NQ+1))
+         !   enddo
+         !endif
 
          ! Go through the bundle copying tracers back to the bundle.
          !-----------------------------------------------------------------
