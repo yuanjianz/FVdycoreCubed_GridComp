@@ -270,14 +270,39 @@ contains
           PRECISION  = ESMF_KIND_R8,                                &
           DIMS       = MAPL_DimsHorzVert,                           &
           VLOCATION  = MAPL_VLocationEdge,               RC=STATUS  )
-     VERIFY_(STATUS) 
+     VERIFY_(STATUS)
 
      ! GCHP: for diagnostics
      call MAPL_AddExportSpec ( gc,                                  &
           SHORT_NAME = 'PLEadv',                                    &
-          LONG_NAME  = 'post_advection_pressure_at_layer_edges', &
+          LONG_NAME  = 'post_advection_pressure_at_layer_edges',    &
           UNITS      = 'Pa'   ,                                     &
           PRECISION  = ESMF_KIND_R8,                                &
+          DIMS       = MAPL_DimsHorzVert,                           &
+          VLOCATION  = MAPL_VLocationEdge,               RC=STATUS  )
+     VERIFY_(STATUS)
+
+     ! GCHP: The below three exports are the same as above  but REAL4
+     ! This is a tempoary work-around for a bug in MAPL 2.55 preventing
+     ! conversion from R8 to R4 in History (ewl, 5/27/25)
+     call MAPL_AddExportSpec ( gc,                                  &
+          SHORT_NAME = 'PLE_R4',                                    &
+          LONG_NAME  = 'pressure_at_layer_edges',                   &
+          UNITS      = 'Pa'   ,                                     &
+          DIMS       = MAPL_DimsHorzVert,                           &
+          VLOCATION  = MAPL_VLocationEdge,               RC=STATUS  )
+     VERIFY_(STATUS)
+     call MAPL_AddExportSpec ( gc,                                  &
+          SHORT_NAME = 'DryPLE_R4',                                 &
+          LONG_NAME  = 'dry_pressure_at_layer_edges',               &
+          UNITS      = 'Pa'   ,                                     &
+          DIMS       = MAPL_DimsHorzVert,                           &
+          VLOCATION  = MAPL_VLocationEdge,               RC=STATUS  )
+     VERIFY_(STATUS)
+     call MAPL_AddExportSpec ( gc,                                  &
+          SHORT_NAME = 'PLEadv_R4',                                 &
+          LONG_NAME  = 'post_advection_pressure_at_layer_edges',    &
+          UNITS      = 'Pa'   ,                                     &
           DIMS       = MAPL_DimsHorzVert,                           &
           VLOCATION  = MAPL_VLocationEdge,               RC=STATUS  )
      VERIFY_(STATUS)
@@ -594,9 +619,14 @@ contains
       REAL(REAL8), POINTER, DIMENSION(:,:,:)   :: iSPHU0   ! GCHP total
 
 ! Exports
-      REAL(REAL8), POINTER, DIMENSION(:,:,:)   :: ePLE     ! GCHP
-      REAL(REAL8), POINTER, DIMENSION(:,:,:)   :: eDryPLE  ! GCHP dry
-      REAL(REAL8), POINTER, DIMENSION(:,:,:)   :: ePLEadv  ! GCHP
+      REAL(REAL8), POINTER, DIMENSION(:,:,:)   :: ePLE       ! GCHP export to GEOS-Chem
+      REAL(REAL8), POINTER, DIMENSION(:,:,:)   :: eDryPLE    ! GCHP dry export to GEOS-Chem
+      REAL(REAL8), POINTER, DIMENSION(:,:,:)   :: ePLEadv    ! GCHP post-advection PLE
+
+      ! GCHP R4 exports as temporary work-around for MAPL 2.55 bug
+      REAL(REAL4), POINTER, DIMENSION(:,:,:)   :: ePLE_R4
+      REAL(REAL4), POINTER, DIMENSION(:,:,:)   :: eDryPLE_R4
+      REAL(REAL4), POINTER, DIMENSION(:,:,:)   :: ePLEadv_R4
 
 ! Locals
       REAL(FVPRC), POINTER, DIMENSION(:,:,:)   :: CX
@@ -1165,19 +1195,27 @@ contains
 
       end if ! NQ > 0
 
-      ! Pressure edge exports
+      ! GCHP: pressure edge exports
       if ( Use_Total_Air_Pressure < 1 ) then
-         call MAPL_GetPointer ( EXPORT, eDryPLE, 'DryPLE', ALLOC=.TRUE., &
-                                RC=STATUS )
-         _VERIFY(STATUS)
+         call MAPL_GetPointer ( EXPORT, eDryPLE, 'DryPLE', ALLOC=.TRUE., RC=STATUS )
          eDryPLE(:,:,:) = DryPLE1(:,:,:)
+
+         ! Set R4 exports as temporary work-around for MAPL 2.55 bug
+         call MAPL_GetPointer ( EXPORT, eDryPLE_R4, 'DryPLE_R4', &
+                                NotFoundOK=.TRUE., _RC )
+         IF ( ASSOCIATED(eDryPLE_R4) ) eDryPLE_R4(:,:,:) = eDryPLE(:,:,:)
+
       endif
-      call MAPL_GetPointer ( EXPORT, ePLE, 'PLE', ALLOC=.TRUE., RC=STATUS )
-      _VERIFY(STATUS)
+      call MAPL_GetPointer ( EXPORT, ePLE, 'PLE', ALLOC=.TRUE., _RC )
       ePLE(:,:,:) = PLE1(:,:,:)
-      call MAPL_GetPointer ( EXPORT, ePLEadv, 'PLEadv', ALLOC=.TRUE., RC=STATUS )
-      _VERIFY(STATUS)
+      call MAPL_GetPointer ( EXPORT, ePLEadv, 'PLEadv', ALLOC=.TRUE., _RC )
       ePLEadv(:,:,:) = PLEadv(:,:,:)
+
+      ! GCHP: Set R4 exports as temporary work-around for MAPL 2.55 bug      
+      call MAPL_GetPointer ( EXPORT, ePLE_R4, 'PLE_R4', NotFoundOK=.TRUE., _RC )
+      IF ( ASSOCIATED(ePLE_R4) ) ePLE_R4(:,:,:) = ePLE(:,:,:)
+      call MAPL_GetPointer ( EXPORT, ePLEadv_R4, 'PLEadv_R4', NotFoundOK=.TRUE., _RC )
+      IF ( ASSOCIATED(ePLEadv_R4) ) ePLEadv_R4(:,:,:) = ePLEadv(:,:,:)
 
       deallocate( advTracers, stat=STATUS )
       VERIFY_(STATUS)
