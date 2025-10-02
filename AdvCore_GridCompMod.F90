@@ -1051,11 +1051,6 @@ contains
 
          endif
 
-#ifdef ADJOINT
-         if (.not. isAdjoint) &
-#endif
-         firstRun=.false.
-
          ! Run FV3 advection
          !------------------
 #ifdef ADJOINT
@@ -1113,10 +1108,6 @@ contains
                                              PLEAdv )
             endif
          endif
-#ifdef ADJOINT
-         if (isAdjoint) &
-              firstRun = .false.
-#endif
 
          ! Update tracer mass conservation
          !-------------------------------------------------------------------
@@ -1261,6 +1252,8 @@ contains
       call MAPL_TimerOff(MAPL,"TOTAL")
 
       !WMP  end if ! AdvCore_Advection
+
+      firstRun=.false.
 
       RETURN_(ESMF_SUCCESS)
 
