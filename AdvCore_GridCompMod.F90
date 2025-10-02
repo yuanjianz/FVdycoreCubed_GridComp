@@ -1162,25 +1162,14 @@ contains
          endif
 
          if (chk_mass .and. is_master()) then
-            write(6,100)  MASS0   , &
-                         TMASS0(2), &
-                         TMASS0(3), &
-                         TMASS0(4), &
-                         TMASS0(5)
-            write(6,102)  MASS1   , &
-                         TMASS1(2), &
-                         TMASS1(3), &
-                         TMASS1(4), &
-                         TMASS1(5)
+            write(6,100)  MASS0, TMASS0(1)
+            write(6,102)  MASS1, TMASS1(1)
             write(6,103) ( MASS1   - MASS0   )/ MASS0   , &
-                         (TMASS1(2)-TMASS0(2))/TMASS0(2), &
-                         (TMASS1(3)-TMASS0(3))/TMASS0(3), &
-                         (TMASS1(4)-TMASS0(4))/TMASS0(4), &
-                         (TMASS1(5)-TMASS0(5))/TMASS0(5)
- 100        format('Tracer M0  : ',e21.14,' ',e21.14,' ',e21.14,' ',e21.14,' ',e21.14)
- 101        format('Tracer Ma  : ',e21.14,' ',e21.14,' ',e21.14,' ',e21.14,' ',e21.14)
- 102        format('Tracer M1  : ',e21.14,' ',e21.14,' ',e21.14,' ',e21.14,' ',e21.14)
- 103        format('Tracer Mdif: ',e21.14,' ',e21.14,' ',e21.14,' ',e21.14,' ',e21.14)
+                         (TMASS1(1)-TMASS0(1))/TMASS0(1)
+ 100        format('Tracer M0  : ',e21.14,' ',e21.14)
+ 101        format('Tracer Ma  : ',e21.14,' ',e21.14)
+ 102        format('Tracer M1  : ',e21.14,' ',e21.14)
+ 103        format('Tracer Mdif: ',e21.14,' ',e21.14)
          endif
 
          ! If using total air pressure then convert all tracers from kg/kg total
