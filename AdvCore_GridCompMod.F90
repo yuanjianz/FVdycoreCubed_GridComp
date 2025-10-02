@@ -78,7 +78,7 @@ module AdvCore_GridCompMod
       logical     :: FV3_DynCoreIsRunning=.false.
       integer     :: AdvCore_Advection
       integer     :: Use_Total_Air_Pressure
-      logical     :: chk_mass=.false.
+      logical     :: chk_mass
 #ifdef ADJOINT
       logical                    :: isAdjoint=.false.
       character(len=ESMF_MAXSTR) :: modelPhase
@@ -134,7 +134,7 @@ contains
       type(ESMF_VM)                           :: VM
       integer                                 :: comm, ndt
       integer                                 :: p_split=1
-
+      integer                                 :: Check_Mass_Conservation
 !=============================================================================
 
 ! Begin...
@@ -383,6 +383,16 @@ contains
                             default=0,                                    &
                             RC=STATUS )
 
+      ! Check if printing mass for mass conservation check
+      ! 1 = true; 0 = false
+      ! -----------------------------------------------------------------
+      call MAPL_GetResource(MAPL,                                         &
+                            Check_Mass_Conservation,                      &
+                            label='CHECK_MASS_CONSERVATION_IN_ADVECTION:', &
+                            default=0,                                    &
+                            RC=STATUS )
+      chk_mass=.FALSE.
+      if (Check_Mass_Conservation>0) chk_mass=.TRUE.
 
       ! Start up FMS/MPP
       !-------------------------------------------
