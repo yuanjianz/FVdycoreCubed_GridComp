@@ -101,6 +101,13 @@ module AdvCore_GridCompMod
       public SetServices
       logical, allocatable, save :: grids_on_my_pe(:)
 
+      private scale_tracers_by_pressure_ratio
+      private global_integral
+      private global_integral_trmass_from_p
+      private global_integral_trmass_from_dp
+      private global_integral_dp
+      private global_integral_dp_rst
+      private global_integral_vv
 !EOP
 
 !------------------------------------------------------------------------------
@@ -1373,6 +1380,194 @@ subroutine global_integral (QG,Q,PLE,IM,JM,KM,NQ)
       deallocate( qsum1 )
 
 end subroutine global_integral
+
+subroutine global_integral_trmass_from_p (QG,Q,PLE,IM,JM,KM)
+
+      real(FVPRC), intent(OUT)   :: QG
+      real(FVPRC), intent(IN)    :: Q(IM,JM,KM)
+      real(FVPRC), intent(IN)    :: PLE(IM,JM,KM+1)
+      integer,     intent(IN)    :: IM,JM,KM
+
+      ! Locals
+      integer   :: k
+      real(REAL8), allocatable ::    dp(:,:,:)
+      real(FVPRC), allocatable :: qsum1(:,:)
+
+      allocate(    dp(im,jm,km) )
+      allocate( qsum1(im,jm)    )
+
+      ! Pressure thickness [Pa]
+      do k=1,KM
+         dp(:,:,k) = PLE(:,:,k+1)-PLE(:,:,k)
+      enddo
+
+      ! Column sum
+      qsum1(:,:) = 0.d0
+      do k=1,KM
+         qsum1(:,:) = qsum1(:,:) + Q(:,:,k)*dp(:,:,k)
+      enddo
+
+      ! Global sum
+      qg = g_sum( FV_Atm(1)%domain,            &
+           qsum1,                       &
+           is,                          &
+           ie,                          &
+           js,                          &
+           je,                          &
+           FV_Atm(1)%ng,                &
+           FV_Atm(1)%gridstruct%area_64,&
+           0,                           & ! ewl:do not divide total sum by total area at the end
+           .true.)
+
+      deallocate( dp )
+      deallocate( qsum1 )
+
+end subroutine global_integral_trmass_from_p
+
+subroutine global_integral_trmass_from_dp (QG,Q,DP,IM,JM,KM)
+
+      real(FVPRC), intent(OUT)   :: QG
+      real(FVPRC), intent(IN)    :: Q(IM,JM,KM)
+      real(FVPRC), intent(IN)    :: DP(IM,JM,KM)
+      integer,     intent(IN)    :: IM,JM,KM
+
+      ! Locals
+      integer   :: k
+      real(FVPRC), allocatable :: qsum1(:,:)
+
+      allocate( qsum1(im,jm)    )
+
+      ! columm sum (restart file delta pressure is in hPa. convert to Pa here)
+      qsum1(:,:) = 0.d0
+      do k=1,KM
+         qsum1(:,:) = qsum1(:,:) + Q(:,:,k)*dp(:,:,k)*1.d2
+      enddo
+
+      ! global sum
+      qg = g_sum( FV_Atm(1)%domain,            &
+           qsum1,                       &
+           is,                          &
+           ie,                          &
+           js,                          &
+           je,                          &
+           FV_Atm(1)%ng,                &
+           FV_Atm(1)%gridstruct%area_64,&
+           0,                           & ! ewl:do not divide total sum by total area at the end
+           .true.)
+
+      deallocate( qsum1 )
+
+end subroutine global_integral_trmass_from_dp
+
+subroutine global_integral_dp (QG,PLE,IM,JM,KM)
+
+      real(REAL8), intent(OUT)   :: QG
+      real(FVPRC), intent(IN)    :: PLE(IM,JM,KM+1)
+      integer,     intent(IN)    :: IM,JM,KM
+
+      ! Locals
+      integer   :: k,n
+      real(REAL8), allocatable ::    dp(:,:,:)
+      real(FVPRC), allocatable :: qsum1(:,:)
+
+      allocate(    dp(im,jm,km) )
+      allocate( qsum1(im,jm)    )
+
+      ! Pressure thickness [Pa]
+      do k=1,KM
+         dp(:,:,k) = PLE(:,:,k+1)-PLE(:,:,k)
+      enddo
+
+      ! Column sum
+      qsum1(:,:) = 0.d0
+      do k=1,KM
+         qsum1(:,:) = qsum1(:,:) + dp(:,:,k)
+      enddo
+
+      ! Global sum
+      qg = g_sum( FV_Atm(1)%domain,            &
+           qsum1,                       &
+           is,                          &
+           ie,                          &
+           js,                          &
+           je,                          &
+           FV_Atm(1)%ng,                &
+           FV_Atm(1)%gridstruct%area_64,&
+           0,                           & ! ewl: do not divide total sum by total area at the end
+           .true.)
+
+      deallocate( dp )
+      deallocate( qsum1 )
+
+end subroutine global_integral_dp
+
+subroutine global_integral_dp_rst (QG,DP,IM,JM,KM)
+
+      real(REAL8), intent(OUT)   :: QG
+      real(FVPRC), intent(IN)    :: DP(IM,JM,KM)
+      integer,     intent(IN)    :: IM,JM,KM
+
+      ! Locals
+      integer   :: k
+      real(FVPRC), allocatable :: qsum1(:,:)
+
+      allocate( qsum1(im,jm)    )
+
+      ! column sum [Pa]
+      qsum1(:,:) = 0.d0
+      do k=1,KM
+         qsum1(:,:) = qsum1(:,:) + dp(:,:,k)*1.d2
+      enddo
+
+      ! global sum
+      qg = g_sum( FV_Atm(1)%domain,            &
+           qsum1,                       &
+           is,                          &
+           ie,                          &
+           js,                          &
+           je,                          &
+           FV_Atm(1)%ng,                &
+           FV_Atm(1)%gridstruct%area_64,&
+           0,                           & ! ewl: do not divide total sum by total area at the end
+           .true.)
+
+      deallocate( qsum1 )
+
+end subroutine global_integral_dp_rst
+
+subroutine global_integral_vv (QG,Q,IM,JM,KM)
+
+      real(FVPRC), intent(OUT)   :: QG
+      real(FVPRC), intent(IN)    :: Q(IM,JM,KM)
+      integer,     intent(IN)    :: IM,JM,KM
+
+      ! Locals
+      integer   :: k
+      real(FVPRC), allocatable :: qsum1(:,:)
+
+      allocate( qsum1(im,jm)    )
+
+      ! column sum
+      qsum1(:,:) = 0.d0
+      do k=1,KM
+         qsum1(:,:) = qsum1(:,:) + Q(:,:,k)
+      enddo
+
+      ! global sum
+      qg = g_sum( FV_Atm(1)%domain,            &
+           qsum1,                       &
+           is,                          &
+           ie,                          &
+           js,                          &
+           je,                          &
+           FV_Atm(1)%ng,                &
+           FV_Atm(1)%gridstruct%area_64,&
+           0,                           & ! ewl: do not divide total sum by total area at the end
+           .true.)
+
+      deallocate( qsum1 )
+
+end subroutine global_integral_vv
 
 subroutine scale_tracers_by_pressure_ratio (Q,DP,PLE,IM,JM,KM,NQ)
 
