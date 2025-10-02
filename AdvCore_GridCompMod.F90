@@ -1363,4 +1363,31 @@ subroutine global_integral (QG,Q,PLE,IM,JM,KM,NQ)
 
 end subroutine global_integral
 
+subroutine scale_tracers_by_pressure_ratio (Q,DP,PLE,IM,JM,KM,NQ)
+
+      real(FVPRC), intent(INOUT) :: Q(IM,JM,KM,NQ)
+      real(FVPRC), intent(IN)    :: DP(IM,JM,KM)
+      real(FVPRC), intent(IN)    :: PLE(IM,JM,KM+1)
+      integer,     intent(IN)    :: IM,JM,KM,NQ
+
+      ! Locals
+      integer   :: k,n
+      real(REAL8), allocatable :: dp_current(:,:)
+
+      allocate( dp_current(im,jm) )
+
+      ! Loop over levels and tracers, compute current pressure
+      ! thickness, and apply scaling
+      dp_current = 0.d0
+      do n=1,NQ
+      do k=1,KM
+         dp_current = PLE(:,:,k+1)-PLE(:,:,k)
+         Q(:,:,k,n) = Q(:,:,k,n) * dp(:,:,k) / dp_current
+      enddo
+      enddo
+
+      deallocate( dp_current )
+
+end subroutine scale_tracers_by_pressure_ratio
+
 end module AdvCore_GridCompMod
