@@ -205,6 +205,15 @@ contains
      VERIFY_(STATUS)
 
     call MAPL_AddImportSpec( gc,                                   &
+        SHORT_NAME = 'DELPDRY',                                    &
+        LONG_NAME  = 'delta dry pressure across levels',           &
+        UNITS      = 'Pa',                                         &
+         PRECISION  = ESMF_KIND_R8,                                &
+         DIMS       = MAPL_DimsHorzVert,                           &
+         VLOCATION  = MAPL_VLocationCenter,             RC=STATUS  )
+     VERIFY_(STATUS)
+
+    call MAPL_AddImportSpec( gc,                                   &
         SHORT_NAME = 'TRADV',                                      &
         LONG_NAME  = 'advected_quantities',                        &
         UNITS      = 'unknown',                                    &
@@ -608,6 +617,7 @@ contains
       type (ESMF_Alarm)             :: ALARM
 
 ! Imports
+      REAL(REAL8), POINTER, DIMENSION(:,:,:)   :: iDELPDRY
       REAL(REAL8), POINTER, DIMENSION(:,:,:)   :: iCX
       REAL(REAL8), POINTER, DIMENSION(:,:,:)   :: iCY
       REAL(REAL8), POINTER, DIMENSION(:,:,:)   :: iMFX
@@ -956,6 +966,14 @@ contains
             end if
 
          end do
+
+         ! If first timestep and delta pressure in the restart file is non-zero,
+         ! then scale mixing ratios by ratio of restart file delta pressure to
+         ! run-time met delta pressure in order to conserve restart file mass
+         if ( firstRun ) THEN
+            call MAPL_GetPointer(IMPORT, iDELPDRY, 'DELPDRY', NotFoundOK=.TRUE., RC=STATUS)
+            VERIFY_(STATUS)
+         endif
 
          ! If using total air then set extra tracer to specific humidity and
          ! convert all other tracers from kg/kg dry to kg/kg total air
