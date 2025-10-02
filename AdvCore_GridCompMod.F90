@@ -973,6 +973,27 @@ contains
          if ( firstRun ) THEN
             call MAPL_GetPointer(IMPORT, iDELPDRY, 'DELPDRY', NotFoundOK=.TRUE., RC=STATUS)
             VERIFY_(STATUS)
+            if ( associated(iDELPDRY) ) then
+               ! Only scale mixing ratios if non-zero delta pressures in the restart file
+               if ( sum(iDELPDRY) > 0.d0 ) THEN
+                  print *, "ewl: sum of FV3 import DELPDRY : ", sum(iDELPDRY)
+                  print *, "ewl: sum of FV3 export DryPLE0 (surface only) : ", sum(PLE0(:,:,LM+1))
+                  if (AdvCore_Advection>0) then
+                     if (Use_Total_Air_Pressure > 0) then
+                        call scale_tracers_by_pressure_ratio(tracers, PLE0, iDELPDRY, IM, JM, LM, NAdv)
+                     else
+                        call scale_tracers_by_pressure_ratio(tracers, DryPLE0, iDELPDRY, IM, JM, LM, NAdv)
+                     endif
+                  else
+                     if (Use_Total_Air_Pressure > 0) then
+                        call scale_tracers_by_pressure_ratio(tracers, PLE1, iDELPDRY, IM, JM, LM, NAdv)
+                     else
+                        call scale_tracers_by_pressure_ratio(tracers, DryPLE1, iDELPDRY, IM, JM, LM, NAdv)
+                     endif
+                  endif
+                  iDELPDRY => NULL()
+               endif
+            endif
          endif
 
          ! If using total air then set extra tracer to specific humidity and
