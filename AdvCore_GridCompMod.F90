@@ -1141,7 +1141,6 @@ contains
          endif
 
          if (chk_mass .and. is_master()) then
-#ifdef PRINT_MASS
             write(6,100)  MASS0   , &
                          TMASS0(2), &
                          TMASS0(3), &
@@ -1152,7 +1151,6 @@ contains
                          TMASS1(3), &
                          TMASS1(4), &
                          TMASS1(5)
-#endif
             write(6,103) ( MASS1   - MASS0   )/ MASS0   , &
                          (TMASS1(2)-TMASS0(2))/TMASS0(2), &
                          (TMASS1(3)-TMASS0(3))/TMASS0(3), &
