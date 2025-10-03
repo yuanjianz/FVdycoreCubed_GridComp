@@ -1437,10 +1437,10 @@ subroutine global_integral_trmass_from_dp (QG,Q,DP,IM,JM,KM)
 
       allocate( qsum1(im,jm)    )
 
-      ! columm sum (restart file delta pressure is in hPa. convert to Pa here)
+      ! columm sum
       qsum1(:,:) = 0.d0
       do k=1,KM
-         qsum1(:,:) = qsum1(:,:) + Q(:,:,k)*dp(:,:,k)*1.d2
+         qsum1(:,:) = qsum1(:,:) + Q(:,:,k)*dp(:,:,k)
       enddo
 
       ! global sum
@@ -1516,7 +1516,7 @@ subroutine global_integral_dp_rst (QG,DP,IM,JM,KM)
       ! column sum [Pa]
       qsum1(:,:) = 0.d0
       do k=1,KM
-         qsum1(:,:) = qsum1(:,:) + dp(:,:,k)*1.d2
+         qsum1(:,:) = qsum1(:,:) + dp(:,:,k)
       enddo
 
       ! global sum
