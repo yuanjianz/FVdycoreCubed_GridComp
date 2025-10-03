@@ -395,7 +395,7 @@ contains
       ! -----------------------------------------------------------------
       call MAPL_GetResource(MAPL,                                         &
                             Check_Mass_Conservation,                      &
-                            label='CHECK_MASS_CONSERVATION_IN_ADVECTION:', &
+                            label='PRINT_MASS_IN_ADVECTION:', &
                             default=0,                                    &
                             RC=STATUS )
       chk_mass=.FALSE.
