@@ -93,7 +93,7 @@ module AdvCore_GridCompMod
       character(len=ESMF_MAXSTR) :: myTracer
       character(len=ESMF_MAXSTR) :: tMassStr
       real(FVPRC), SAVE          :: TMASS0(ntracers)
-      real(REAL8), SAVE          ::  MASS0
+      real(REAL8), SAVE          :: MASS0
       logical    , SAVE          :: firstRun=.true.
 
 ! !PUBLIC MEMBER FUNCTIONS:
@@ -1036,67 +1036,70 @@ contains
          end if
 
          ! Check Mass conservation
-         if (chk_mass) then
+         if (chk_mass .and. firstRun) then
 
-            ! Compute mass differently based on whether advection on or off,
-            ! and whether using total or dry air pressure
-            if (firstRun .and. AdvCore_Advection>0) then
+            ! Compute initial mass (proxy). Do this differently based on
+            ! whether advection, on or off and whether using total or dry
+            ! air pressure in advection. Mass of first run is saved for
+            ! comparison in all subsequent timesteps.
+            if (AdvCore_Advection>0) then
                if ( Use_Total_Air_Pressure > 0 ) then
                   MASS0 = g_sum( FV_Atm(1)%domain,            &
-                                 PLE0(:,:,LM),                &
-                                 is,                          &
-                                 ie,                          &
-                                 js,                          &
-                                 je,                          &
-                                 FV_Atm(1)%ng,                &
-                                 FV_Atm(1)%gridstruct%area_64,&
-                                 1,                           &
-                                 .true. )
+                       PLE0(:,:,LM),                &
+                       is,                          &
+                       ie,                          &
+                       js,                          &
+                       je,                          &
+                       FV_Atm(1)%ng,                &
+                       FV_Atm(1)%gridstruct%area_64,&
+                       1,                           &
+                       .true. )
                   call global_integral(TMASS0, TRACERS, PLE0, IM,JM,LM,NAdv)
                else
                   MASS0 = g_sum( FV_Atm(1)%domain,            &
-                                 DryPLE0(:,:,LM),             &
-                                 is,                          &
-                                 ie,                          &
-                                 js,                          &
-                                 je,                          &
-                                 FV_Atm(1)%ng,                &
-                                 FV_Atm(1)%gridstruct%area_64,&
-                                 1,                           &
-                                 .true. )
+                       DryPLE0(:,:,LM),             &
+                       is,                          &
+                       ie,                          &
+                       js,                          &
+                       je,                          &
+                       FV_Atm(1)%ng,                &
+                       FV_Atm(1)%gridstruct%area_64,&
+                       1,                           &
+                       .true. )
                   call global_integral(TMASS0, TRACERS, DryPLE0, IM,JM,LM,NAdv)
+                  if (MASS0 /= 0.0) TMASS0=TMASS0/MASS0
                endif
-               if (MASS0 /= 0.0) TMASS0=TMASS0/MASS0
-            elseif (firstRun) then
+            else
                if ( Use_Total_Air_Pressure > 0 ) then
                   MASS0 = g_sum( FV_Atm(1)%domain,            &
-                                 PLE1(:,:,LM),                &
-                                 is,                          &
-                                 ie,                          &
-                                 js,                          &
-                                 je,                          &
-                                 FV_Atm(1)%ng,                &
-                                 FV_Atm(1)%gridstruct%area_64,&
-                                 1,                           &
-                                 .true. )
+                       PLE1(:,:,LM),                &
+                       is,                          &
+                       ie,                          &
+                       js,                          &
+                       je,                          &
+                       FV_Atm(1)%ng,                &
+                       FV_Atm(1)%gridstruct%area_64,&
+                       1,                           &
+                       .true. )
                   call global_integral(TMASS0, TRACERS, PLE1, IM,JM,LM,NAdv)
                else
                   MASS0 = g_sum( FV_Atm(1)%domain,            &
-                                 DryPLE1(:,:,LM),             &
-                                 is,                          &
-                                 ie,                          &
-                                 js,                          &
-                                 je,                          &
-                                 FV_Atm(1)%ng,                &
-                                 FV_Atm(1)%gridstruct%area_64,&
-                                 1,                           &
-                                .true.)
+                       DryPLE1(:,:,LM),             &
+                       is,                          &
+                       ie,                          &
+                       js,                          &
+                       je,                          &
+                       FV_Atm(1)%ng,                &
+                       FV_Atm(1)%gridstruct%area_64,&
+                       1,                           &
+                       .true.)
                   call global_integral(TMASS0, TRACERS, DryPLE1, IM,JM,LM,NQ)
                endif
                if (MASS0 /= 0.0) TMASS0=TMASS0/MASS0
             endif
 
-         endif
+
+         endif ! chk_mass .and. firstRun
 
          ! Run FV3 advection
          !------------------
@@ -1156,7 +1159,9 @@ contains
             endif
          endif
 
-         ! Update tracer mass conservation
+         ! Compute tracer mass post-advection (proxy). Done for all timesteps.
+         ! Note that TMASS0 and MASS0 refer to proxy mass of first timestep and are
+         ! printed and diffed every timestep for comparison.
          !-------------------------------------------------------------------
          if (chk_mass) then
             if ( Use_Total_Air_Pressure > 0 ) then
@@ -1185,18 +1190,18 @@ contains
                call global_integral(TMASS1, TRACERS, DryPLE1, IM,JM,LM,NQ)
             endif
             if (MASS1 /= 0.0) TMASS1=TMASS1/MASS1
-         endif
 
-         if (chk_mass .and. is_master()) then
-            write(6,100)  MASS0, TMASS0(1)
-            write(6,102)  MASS1, TMASS1(1)
-            write(6,103) ( MASS1   - MASS0   )/ MASS0   , &
-                         (TMASS1(1)-TMASS0(1))/TMASS0(1)
- 100        format('Tracer M0  : ',e21.14,' ',e21.14)
- 101        format('Tracer Ma  : ',e21.14,' ',e21.14)
- 102        format('Tracer M1  : ',e21.14,' ',e21.14)
- 103        format('Tracer Mdif: ',e21.14,' ',e21.14)
-         endif
+            if (is_master()) then
+               write(6,102)  MASS0, TMASS0(1)
+               write(6,103)  MASS1, TMASS1(1)
+               write(6,104) ( MASS1   - MASS0   )/ MASS0   , &
+                    (TMASS1(1)-TMASS0(1))/TMASS0(1)
+102            format('Tracer M0  : ',e21.14,' ',e21.14)
+103            format('Tracer M1  : ',e21.14,' ',e21.14)
+104            format('Tracer Mdif: ',e21.14,' ',e21.14)
+            endif
+
+         endif ! chk_mass
 
          ! If using total air pressure then convert all tracers from kg/kg total
          ! to kg/kg dry for use in GEOS-Chem. Use the post-advection specific
