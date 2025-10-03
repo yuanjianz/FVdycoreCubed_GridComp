@@ -666,6 +666,7 @@ contains
       REAL(FVPRC), POINTER, DIMENSION(:,:,:)   :: DryPLE1 ! GCHP dry
       REAL(FVPRC), POINTER, DIMENSION(:,:,:)   :: PLEAdv  ! GCHP total
       REAL(FVPRC), POINTER, DIMENSION(:,:,:)   :: SPHU0   ! GCHP total
+      REAL(FVPRC), POINTER, DIMENSION(:,:,:)   :: DELPDRY ! import
       REAL(FVPRC), POINTER, DIMENSION(:)       :: AK
       REAL(FVPRC), POINTER, DIMENSION(:)       :: BK
       REAL(REAL8), allocatable :: ak_r8(:),bk_r8(:)
@@ -793,6 +794,12 @@ contains
       MFY    = iMFY
       CX     = iCX
       CY     = iCY
+
+      ! If first run, get import DELPDRY (restart field from GEOS-Chem internal state)
+      if ( firstRun ) THEN
+         call MAPL_GetPointer(IMPORT, iDELPDRY, 'DELPDRY', NotFoundOK=.TRUE., RC=STATUS)
+         VERIFY_(STATUS)
+      endif
 
       ! The quantities to be advected come as friendlies in a bundle
       !  in the import state.
@@ -987,30 +994,32 @@ contains
          ! If first timestep and delta pressure in the restart file is non-zero,
          ! then scale mixing ratios by ratio of restart file delta pressure to
          ! run-time met delta pressure in order to conserve restart file mass
-         if ( firstRun ) THEN
-            call MAPL_GetPointer(IMPORT, iDELPDRY, 'DELPDRY', NotFoundOK=.TRUE., RC=STATUS)
-            VERIFY_(STATUS)
-            if ( associated(iDELPDRY) ) then
-               ! Only scale mixing ratios if non-zero delta pressures in the restart file
-               if ( sum(iDELPDRY) > 0.d0 ) THEN
-                  print *, "ewl: sum of FV3 import DELPDRY : ", sum(iDELPDRY)
-                  print *, "ewl: sum of FV3 export DryPLE0 (surface only) : ", sum(PLE0(:,:,LM+1))
-                  if (AdvCore_Advection>0) then
-                     if (Use_Total_Air_Pressure > 0) then
-                        call scale_tracers_by_pressure_ratio(tracers, PLE0, iDELPDRY, IM, JM, LM, NAdv)
-                     else
-                        call scale_tracers_by_pressure_ratio(tracers, DryPLE0, iDELPDRY, IM, JM, LM, NAdv)
-                     endif
+         if ( firstRun .and. associated(iDELPDRY) ) THEN
+
+            ! Only scale mixing ratios if non-zero delta pressures in the restart file
+            if ( sum(iDELPDRY) > 0.d0 ) THEN
+               ALLOCATE( DELPDRY(IM,JM,LM) )
+               DELPDRY = iDELPDRY
+               if (AdvCore_Advection>0) then
+                  if (Use_Total_Air_Pressure > 0) then
+                     call scale_tracers_by_pressure_ratio(tracers, PLE0, &
+                          DELPDRY, IM, JM, LM, NAdv)
                   else
-                     if (Use_Total_Air_Pressure > 0) then
-                        call scale_tracers_by_pressure_ratio(tracers, PLE1, iDELPDRY, IM, JM, LM, NAdv)
-                     else
-                        call scale_tracers_by_pressure_ratio(tracers, DryPLE1, iDELPDRY, IM, JM, LM, NAdv)
-                     endif
+                     call scale_tracers_by_pressure_ratio(tracers, DryPLE0, &
+                          DELPDRY, IM, JM, LM, NAdv)
                   endif
-                  iDELPDRY => NULL()
+               else
+                  if (Use_Total_Air_Pressure > 0) then
+                     call scale_tracers_by_pressure_ratio(tracers, PLE1, &
+                          DELPDRY, IM, JM, LM, NAdv)
+                  else
+                     call scale_tracers_by_pressure_ratio(tracers, DryPLE1, &
+                          DELPDRY, IM, JM, LM, NAdv)
+                  endif
                endif
+               DEALLOCATE( DELPDRY )
             endif
+
          endif
 
          ! If using total air then set extra tracer to specific humidity and
