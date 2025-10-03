@@ -1569,30 +1569,26 @@ subroutine global_integral_vv (QG,Q,IM,JM,KM)
 
 end subroutine global_integral_vv
 
-subroutine scale_tracers_by_pressure_ratio (Q,DP,PLE,IM,JM,KM,NQ)
+subroutine scale_tracers_by_pressure_ratio (Q,PLE,DP,IM,JM,KM,NQ)
 
-      real(FVPRC), intent(INOUT) :: Q(IM,JM,KM,NQ)
-      real(FVPRC), intent(IN)    :: DP(IM,JM,KM)
-      real(FVPRC), intent(IN)    :: PLE(IM,JM,KM+1)
-      integer,     intent(IN)    :: IM,JM,KM,NQ
+      real(FVPRC), intent(INOUT)       :: Q(IM,JM,KM,NQ)
+      real(FVPRC), intent(IN)          :: PLE(IM,JM,KM+1)
+      real(FVPRC), intent(IN)          :: DP(IM,JM,KM)
+      integer,     intent(IN)          :: IM,JM,KM,NQ
 
       ! Locals
-      integer   :: k,n
-      real(REAL8), allocatable :: dp_current(:,:)
+      integer   :: i,j,k,n
 
-      allocate( dp_current(im,jm) )
-
-      ! Loop over levels and tracers, compute current pressure
-      ! thickness, and apply scaling
-      dp_current = 0.d0
+      ! Loop over levels and tracers and apply scaling
       do n=1,NQ
       do k=1,KM
-         dp_current = PLE(:,:,k+1)-PLE(:,:,k)
-         Q(:,:,k,n) = Q(:,:,k,n) * dp(:,:,k) / dp_current
+      do j=1,JM
+      do i=1,IM
+         Q(i,j,k,n) = Q(i,j,k,n) * dp(i,j,k) / (PLE(i,j,k+1)-PLE(i,j,k))
       enddo
       enddo
-
-      deallocate( dp_current )
+      enddo
+      enddo
 
 end subroutine scale_tracers_by_pressure_ratio
 
