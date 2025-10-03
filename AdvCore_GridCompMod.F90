@@ -672,6 +672,8 @@ contains
       REAL(REAL8), allocatable :: ak_r8(:),bk_r8(:)
       REAL(FVPRC), POINTER, DIMENSION(:,:,:,:) :: TRACERS
       REAL(FVPRC) :: MASS1, TMASS1(ntracers)
+      REAL(FVPRC) :: spc1_vv, spc1_mass_dp_met, spc1_mass_dp_rst ! debug
+      REAL(FVPRC) :: dp_met, dp_rst                              ! debug
       TYPE(AdvCoreTracers), POINTER :: advTracers(:)
       type(ESMF_FieldBundle) :: TRADV
       type(ESMF_Field)       :: field
@@ -991,6 +993,42 @@ contains
 
          end do
 
+         !----------------------------------------------------------
+         ! Optional pre-scaling debug : Sum area-weighted
+         ! values and print (first run only)
+         !----------------------------------------------------------
+         !if (chk_mass .and. firstRun) then
+         !   dP_rst=0.d0
+         !   spc1_mass_dp_rst=0.d0
+         !
+         !   ! Delta pressure from the restart file
+         !   if ( ASSOCIATED(iDELPDRY) ) &
+         !        call global_integral_dp_rst(dp_rst, iDELPDRY, IM,JM,LM)
+         !
+         !   ! Delta pressure as computed from met
+         !   call global_integral_dp(dp_met, DryPLE0, IM,JM,LM)
+         !
+         !   ! v/v for species 1
+         !   call global_integral_vv(spc1_vv, Tracers(:,:,:,1), IM,JM,LM)
+         !
+         !   ! Species 1 v/v * dp (rst) (proxy for mass in restart file)
+         !   if ( ASSOCIATED(iDELPDRY) ) &
+         !        call global_integral_trmass_from_dp(spc1_mass_dp_rst, &
+         !        Tracers(:,:,:,1), iDELPDRY, IM,JM,LM)
+         !
+         !   ! Species 1 v/v * dp (met) (dp computed in function)
+         !   call global_integral_trmass_from_p(spc1_mass_dp_met, &
+         !        Tracers(:,:,:,1), DryPLE0, IM,JM,LM)
+         !
+         !   if (is_master()) then
+         !      write(6,*) "Global area-weighted sums: dp met, dp rst, spc1 vv, spc1 vv*dp_met, spc1 vv*dp_rst"
+         !      write(6,100)  dp_met, dp_rst, spc1_vv, &
+         !           spc1_mass_dp_met, spc1_mass_dp_rst
+         !   endif
+100       format('First run, before scaling: ',e21.14,' ',e21.14,' ',e21.14,' ',e21.14,' ',e21.14)
+         !
+         !endif ! chk_mass .and. firstRun
+
          ! If first timestep and delta pressure in the restart file is non-zero,
          ! then scale mixing ratios by ratio of restart file delta pressure to
          ! run-time met delta pressure in order to conserve restart file mass
@@ -1098,6 +1136,40 @@ contains
                if (MASS0 /= 0.0) TMASS0=TMASS0/MASS0
             endif
 
+            !----------------------------------------------------------
+            ! Optional pre-advection debug : Sum additional
+            ! area-weighted values and print (first run only)
+            !----------------------------------------------------------
+            !dP_rst=0.d0
+            !spc1_mass_dp_rst=0.d0
+            !
+            !! Delta pressure from the restart file
+            !if ( ASSOCIATED(iDELPDRY) ) &
+            !     call global_integral_dp_rst(dp_rst, iDELPDRY, IM,JM,LM)
+            !
+            !! Delta pressure as computed from met
+            !call global_integral_dp(dp_met, DryPLE0, IM,JM,LM)
+            !
+            !! v/v for species 1
+            !call global_integral_vv(spc1_vv, Tracers(:,:,:,1), IM,JM,LM)
+            !
+            !! Species 1 v/v * dp (rst) (proxy for mass in restart file)
+            !if ( ASSOCIATED(iDELPDRY) ) &
+            !     call global_integral_trmass_from_dp(spc1_mass_dp_rst, &
+            !     Tracers(:,:,:,1), iDELPDRY, IM,JM,LM)
+            !
+            !! Species 1 v/v * dp (met) (dp computed in function)
+            !call global_integral_trmass_from_p(spc1_mass_dp_met, &
+            !     Tracers(:,:,:,1), DryPLE0, IM,JM,LM)
+            !
+            !! Print the values
+            !if (is_master()) then
+            !   write(6,*) "Global area-weighted sums: sfc p met, dp met, dp rst, spc1 vv, spc1 vv*dp_met, spc1 vv*dp_rst"
+            !   write(6,101)  MASS0, dp_met, dp_rst, spc1_vv, &
+            !        spc1_mass_dp_met, spc1_mass_dp_rst
+            !endif
+101         format('First run, after scaling: ',e21.14,' ',e21.14,' ',e21.14,' ',e21.14,' ',e21.14,' ',e21.14)
+            !----------------------------------------------------------
 
          endif ! chk_mass .and. firstRun
 
@@ -1200,6 +1272,20 @@ contains
 103            format('Tracer M1  : ',e21.14,' ',e21.14)
 104            format('Tracer Mdif: ',e21.14,' ',e21.14)
             endif
+
+            ! Optional post-advection debug : Sum additional values and print
+            !! Area-weighted delta pressure
+            !call global_integral_dp(dp_met, DryPLE1, IM,JM,LM)
+            !
+            !! Area-weighted species v/v * dp using met (proxy mass)
+            !call global_integral_trmass_from_p(spc1_mass_dp_met, &
+            !     Tracers(:,:,:,1), DryPLE1, IM,JM,LM)
+            !
+            !if (is_master()) then
+            !   write(6,*) "Global area-weighted sums: sfc p met, spc1 vv*dp_met"
+            !   write(6,105) dp_met, spc1_mass_dp_met
+            !endif
+105         format('Post-advection: ',e21.14,' ',e21.14)
 
          endif ! chk_mass
 
@@ -1430,7 +1516,7 @@ subroutine global_integral_trmass_from_p (QG,Q,PLE,IM,JM,KM)
            je,                          &
            FV_Atm(1)%ng,                &
            FV_Atm(1)%gridstruct%area_64,&
-           0,                           & ! ewl:do not divide total sum by total area at the end
+           0,                           & ! do not divide total sum by total aread
            .true.)
 
       deallocate( dp )
@@ -1466,7 +1552,7 @@ subroutine global_integral_trmass_from_dp (QG,Q,DP,IM,JM,KM)
            je,                          &
            FV_Atm(1)%ng,                &
            FV_Atm(1)%gridstruct%area_64,&
-           0,                           & ! ewl:do not divide total sum by total area at the end
+           0,                           & ! do not divide total sum by total area
            .true.)
 
       deallocate( qsum1 )
@@ -1507,7 +1593,7 @@ subroutine global_integral_dp (QG,PLE,IM,JM,KM)
            je,                          &
            FV_Atm(1)%ng,                &
            FV_Atm(1)%gridstruct%area_64,&
-           0,                           & ! ewl: do not divide total sum by total area at the end
+           0,                           & ! do not divide total sum by total area
            .true.)
 
       deallocate( dp )
@@ -1542,7 +1628,7 @@ subroutine global_integral_dp_rst (QG,DP,IM,JM,KM)
            je,                          &
            FV_Atm(1)%ng,                &
            FV_Atm(1)%gridstruct%area_64,&
-           0,                           & ! ewl: do not divide total sum by total area at the end
+           0,                           & ! do not divide total sum by total area
            .true.)
 
       deallocate( qsum1 )
@@ -1576,7 +1662,7 @@ subroutine global_integral_vv (QG,Q,IM,JM,KM)
            je,                          &
            FV_Atm(1)%ng,                &
            FV_Atm(1)%gridstruct%area_64,&
-           0,                           & ! ewl: do not divide total sum by total area at the end
+           0,                           & ! do not divide total sum by total area
            .true.)
 
       deallocate( qsum1 )
