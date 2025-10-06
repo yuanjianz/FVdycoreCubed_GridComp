@@ -248,6 +248,7 @@ contains
           SHORT_NAME = 'AREA',                                      &
           LONG_NAME  = 'agrid_cell_area',                           &
           UNITS      = 'm+2'  ,                                     &
+          PRECISION  = ESMF_KIND_R8,                                &
           DIMS       = MAPL_DimsHorzOnly,                           &
           VLOCATION  = MAPL_VLocationNone,               RC=STATUS  )
      VERIFY_(STATUS)
@@ -514,7 +515,7 @@ contains
       type(ESMF_Config)                  :: CF
       type (MAPL_MetaComp),      pointer :: MAPL
       type (ESMF_VM)                     :: VM
-      real, pointer                      :: temp2d(:,:)
+      real(REAL8), pointer               :: temp2d_r8(:,:) => NULL()
       integer                            :: IS, IE, JS, JE
       logical                            :: gridCreated
       type(ESMF_Grid)                    :: grid
@@ -560,9 +561,10 @@ contains
          IE = FV_Atm(1)%bd%iec
          JS = FV_Atm(1)%bd%jsc
          JE = FV_Atm(1)%bd%jec
-         call MAPL_GetPointer(EXPORT, temp2d, 'AREA', ALLOC=.TRUE., rc=status)
+         call MAPL_GetPointer(EXPORT, temp2d_r8, 'AREA', ALLOC=.TRUE., rc=status)
          VERIFY_(STATUS)
-         temp2d = FV_Atm(1)%gridstruct%area(IS:IE,JS:JE)
+         temp2d_r8 = FV_Atm(1)%gridstruct%area_64(IS:IE,JS:JE)
+         temp2d_r8 => NULL()
       endif
 
       call MAPL_TimerOff(MAPL,"INITIALIZE")
