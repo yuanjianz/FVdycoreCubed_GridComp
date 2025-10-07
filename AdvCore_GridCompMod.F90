@@ -78,7 +78,7 @@ module AdvCore_GridCompMod
       logical     :: FV3_DynCoreIsRunning=.false.
       integer     :: AdvCore_Advection
       integer     :: Use_Total_Air_Pressure
-      logical     :: chk_mass=.false.
+      logical     :: chk_mass
 #ifdef ADJOINT
       logical                    :: isAdjoint=.false.
       character(len=ESMF_MAXSTR) :: modelPhase
@@ -93,7 +93,7 @@ module AdvCore_GridCompMod
       character(len=ESMF_MAXSTR) :: myTracer
       character(len=ESMF_MAXSTR) :: tMassStr
       real(FVPRC), SAVE          :: TMASS0(ntracers)
-      real(REAL8), SAVE          ::  MASS0
+      real(REAL8), SAVE          :: MASS0
       logical    , SAVE          :: firstRun=.true.
 
 ! !PUBLIC MEMBER FUNCTIONS:
@@ -101,6 +101,13 @@ module AdvCore_GridCompMod
       public SetServices
       logical, allocatable, save :: grids_on_my_pe(:)
 
+      private scale_tracers_by_pressure_ratio
+      private global_integral
+      private global_integral_trmass_from_p
+      private global_integral_trmass_from_dp
+      private global_integral_dp
+      private global_integral_dp_rst
+      private global_integral_vv
 !EOP
 
 !------------------------------------------------------------------------------
@@ -134,7 +141,7 @@ contains
       type(ESMF_VM)                           :: VM
       integer                                 :: comm, ndt
       integer                                 :: p_split=1
-
+      integer                                 :: Check_Mass_Conservation
 !=============================================================================
 
 ! Begin...
@@ -202,6 +209,15 @@ contains
          PRECISION  = ESMF_KIND_R8,                                &
          DIMS       = MAPL_DimsHorzVert,                           &
          VLOCATION  = MAPL_VLocationEdge,             RC=STATUS  )
+     VERIFY_(STATUS)
+
+    call MAPL_AddImportSpec( gc,                                   &
+        SHORT_NAME = 'DELPDRY',                                    &
+        LONG_NAME  = 'delta dry pressure across levels',           &
+        UNITS      = 'Pa',                                         &
+         PRECISION  = ESMF_KIND_R8,                                &
+         DIMS       = MAPL_DimsHorzVert,                           &
+         VLOCATION  = MAPL_VLocationCenter,             RC=STATUS  )
      VERIFY_(STATUS)
 
     call MAPL_AddImportSpec( gc,                                   &
@@ -375,6 +391,16 @@ contains
                             default=0,                                    &
                             RC=STATUS )
 
+      ! Check if printing mass for mass conservation check
+      ! 1 = true; 0 = false
+      ! -----------------------------------------------------------------
+      call MAPL_GetResource(MAPL,                                         &
+                            Check_Mass_Conservation,                      &
+                            label='PRINT_MASS_IN_ADVECTION:', &
+                            default=0,                                    &
+                            RC=STATUS )
+      chk_mass=.FALSE.
+      if (Check_Mass_Conservation>0) chk_mass=.TRUE.
 
       ! Start up FMS/MPP
       !-------------------------------------------
@@ -610,6 +636,7 @@ contains
       type (ESMF_Alarm)             :: ALARM
 
 ! Imports
+      REAL(REAL8), POINTER, DIMENSION(:,:,:)   :: iDELPDRY
       REAL(REAL8), POINTER, DIMENSION(:,:,:)   :: iCX
       REAL(REAL8), POINTER, DIMENSION(:,:,:)   :: iCY
       REAL(REAL8), POINTER, DIMENSION(:,:,:)   :: iMFX
@@ -641,11 +668,14 @@ contains
       REAL(FVPRC), POINTER, DIMENSION(:,:,:)   :: DryPLE1 ! GCHP dry
       REAL(FVPRC), POINTER, DIMENSION(:,:,:)   :: PLEAdv  ! GCHP total
       REAL(FVPRC), POINTER, DIMENSION(:,:,:)   :: SPHU0   ! GCHP total
+      REAL(FVPRC), POINTER, DIMENSION(:,:,:)   :: DELPDRY ! import
       REAL(FVPRC), POINTER, DIMENSION(:)       :: AK
       REAL(FVPRC), POINTER, DIMENSION(:)       :: BK
       REAL(REAL8), allocatable :: ak_r8(:),bk_r8(:)
       REAL(FVPRC), POINTER, DIMENSION(:,:,:,:) :: TRACERS
       REAL(FVPRC) :: MASS1, TMASS1(ntracers)
+      REAL(FVPRC) :: spc1_vv, spc1_mass_dp_met, spc1_mass_dp_rst ! debug
+      REAL(FVPRC) :: dp_met, dp_rst                              ! debug
       TYPE(AdvCoreTracers), POINTER :: advTracers(:)
       type(ESMF_FieldBundle) :: TRADV
       type(ESMF_Field)       :: field
@@ -768,6 +798,12 @@ contains
       MFY    = iMFY
       CX     = iCX
       CY     = iCY
+
+      ! If first run, get import DELPDRY (restart field from GEOS-Chem internal state)
+      if ( firstRun ) THEN
+         call MAPL_GetPointer(IMPORT, iDELPDRY, 'DELPDRY', NotFoundOK=.TRUE., RC=STATUS)
+         VERIFY_(STATUS)
+      endif
 
       ! The quantities to be advected come as friendlies in a bundle
       !  in the import state.
@@ -959,6 +995,73 @@ contains
 
          end do
 
+         !----------------------------------------------------------
+         ! Optional pre-scaling debug : Sum area-weighted
+         ! values and print (first run only)
+         !----------------------------------------------------------
+         !if (chk_mass .and. firstRun) then
+         !   dP_rst=0.d0
+         !   spc1_mass_dp_rst=0.d0
+         !
+         !   ! Delta pressure from the restart file
+         !   if ( ASSOCIATED(iDELPDRY) ) &
+         !        call global_integral_dp_rst(dp_rst, iDELPDRY, IM,JM,LM)
+         !
+         !   ! Delta pressure as computed from met
+         !   call global_integral_dp(dp_met, DryPLE0, IM,JM,LM)
+         !
+         !   ! v/v for species 1
+         !   call global_integral_vv(spc1_vv, Tracers(:,:,:,1), IM,JM,LM)
+         !
+         !   ! Species 1 v/v * dp (rst) (proxy for mass in restart file)
+         !   if ( ASSOCIATED(iDELPDRY) ) &
+         !        call global_integral_trmass_from_dp(spc1_mass_dp_rst, &
+         !        Tracers(:,:,:,1), iDELPDRY, IM,JM,LM)
+         !
+         !   ! Species 1 v/v * dp (met) (dp computed in function)
+         !   call global_integral_trmass_from_p(spc1_mass_dp_met, &
+         !        Tracers(:,:,:,1), DryPLE0, IM,JM,LM)
+         !
+         !   if (is_master()) then
+         !      write(6,*) "Global area-weighted sums: dp met, dp rst, spc1 vv, spc1 vv*dp_met, spc1 vv*dp_rst"
+         !      write(6,100)  dp_met, dp_rst, spc1_vv, &
+         !           spc1_mass_dp_met, spc1_mass_dp_rst
+         !   endif
+100       format('First run, before scaling: ',e21.14,' ',e21.14,' ',e21.14,' ',e21.14,' ',e21.14)
+         !
+         !endif ! chk_mass .and. firstRun
+
+         ! If first timestep and delta pressure in the restart file is non-zero,
+         ! then scale mixing ratios by ratio of restart file delta pressure to
+         ! run-time met delta pressure in order to conserve restart file mass
+         if ( firstRun .and. associated(iDELPDRY) ) THEN
+
+            ! Only scale mixing ratios if non-zero delta pressures in the restart file
+            if ( sum(iDELPDRY) > 0.d0 ) THEN
+               ALLOCATE( DELPDRY(IM,JM,LM) )
+               DELPDRY = iDELPDRY
+               if (AdvCore_Advection>0) then
+                  if (Use_Total_Air_Pressure > 0) then
+                     call scale_tracers_by_pressure_ratio(tracers, PLE0, &
+                          DELPDRY, IM, JM, LM, NAdv)
+                  else
+                     call scale_tracers_by_pressure_ratio(tracers, DryPLE0, &
+                          DELPDRY, IM, JM, LM, NAdv)
+                  endif
+               else
+                  if (Use_Total_Air_Pressure > 0) then
+                     call scale_tracers_by_pressure_ratio(tracers, PLE1, &
+                          DELPDRY, IM, JM, LM, NAdv)
+                  else
+                     call scale_tracers_by_pressure_ratio(tracers, DryPLE1, &
+                          DELPDRY, IM, JM, LM, NAdv)
+                  endif
+               endif
+               DEALLOCATE( DELPDRY )
+            endif
+
+         endif
+
          ! If using total air then set extra tracer to specific humidity and
          ! convert all other tracers from kg/kg dry to kg/kg total air
          if ( Use_Total_Air_Pressure > 0 ) then
@@ -973,72 +1076,104 @@ contains
          end if
 
          ! Check Mass conservation
-         if (chk_mass) then
+         if (chk_mass .and. firstRun) then
 
-            ! Compute mass differently based on whether advection on or off,
-            ! and whether using total or dry air pressure
-            if (firstRun .and. AdvCore_Advection>0) then
+            ! Compute initial mass (proxy). Do this differently based on
+            ! whether advection, on or off and whether using total or dry
+            ! air pressure in advection. Mass of first run is saved for
+            ! comparison in all subsequent timesteps.
+            if (AdvCore_Advection>0) then
                if ( Use_Total_Air_Pressure > 0 ) then
                   MASS0 = g_sum( FV_Atm(1)%domain,            &
-                                 PLE0(:,:,LM),                &
-                                 is,                          &
-                                 ie,                          &
-                                 js,                          &
-                                 je,                          &
-                                 FV_Atm(1)%ng,                &
-                                 FV_Atm(1)%gridstruct%area_64,&
-                                 1,                           &
-                                 .true. )
+                       PLE0(:,:,LM),                &
+                       is,                          &
+                       ie,                          &
+                       js,                          &
+                       je,                          &
+                       FV_Atm(1)%ng,                &
+                       FV_Atm(1)%gridstruct%area_64,&
+                       1,                           &
+                       .true. )
                   call global_integral(TMASS0, TRACERS, PLE0, IM,JM,LM,NAdv)
                else
                   MASS0 = g_sum( FV_Atm(1)%domain,            &
-                                 DryPLE0(:,:,LM),             &
-                                 is,                          &
-                                 ie,                          &
-                                 js,                          &
-                                 je,                          &
-                                 FV_Atm(1)%ng,                &
-                                 FV_Atm(1)%gridstruct%area_64,&
-                                 1,                           &
-                                 .true. )
+                       DryPLE0(:,:,LM),             &
+                       is,                          &
+                       ie,                          &
+                       js,                          &
+                       je,                          &
+                       FV_Atm(1)%ng,                &
+                       FV_Atm(1)%gridstruct%area_64,&
+                       1,                           &
+                       .true. )
                   call global_integral(TMASS0, TRACERS, DryPLE0, IM,JM,LM,NAdv)
+                  if (MASS0 /= 0.0) TMASS0=TMASS0/MASS0
                endif
-               if (MASS0 /= 0.0) TMASS0=TMASS0/MASS0
-            elseif (firstRun) then
+            else
                if ( Use_Total_Air_Pressure > 0 ) then
                   MASS0 = g_sum( FV_Atm(1)%domain,            &
-                                 PLE1(:,:,LM),                &
-                                 is,                          &
-                                 ie,                          &
-                                 js,                          &
-                                 je,                          &
-                                 FV_Atm(1)%ng,                &
-                                 FV_Atm(1)%gridstruct%area_64,&
-                                 1,                           &
-                                 .true. )
+                       PLE1(:,:,LM),                &
+                       is,                          &
+                       ie,                          &
+                       js,                          &
+                       je,                          &
+                       FV_Atm(1)%ng,                &
+                       FV_Atm(1)%gridstruct%area_64,&
+                       1,                           &
+                       .true. )
                   call global_integral(TMASS0, TRACERS, PLE1, IM,JM,LM,NAdv)
                else
                   MASS0 = g_sum( FV_Atm(1)%domain,            &
-                                 DryPLE1(:,:,LM),             &
-                                 is,                          &
-                                 ie,                          &
-                                 js,                          &
-                                 je,                          &
-                                 FV_Atm(1)%ng,                &
-                                 FV_Atm(1)%gridstruct%area_64,&
-                                 1,                           &
-                                .true.)
+                       DryPLE1(:,:,LM),             &
+                       is,                          &
+                       ie,                          &
+                       js,                          &
+                       je,                          &
+                       FV_Atm(1)%ng,                &
+                       FV_Atm(1)%gridstruct%area_64,&
+                       1,                           &
+                       .true.)
                   call global_integral(TMASS0, TRACERS, DryPLE1, IM,JM,LM,NQ)
                endif
                if (MASS0 /= 0.0) TMASS0=TMASS0/MASS0
             endif
 
-         endif
+            !----------------------------------------------------------
+            ! Optional pre-advection debug : Sum additional
+            ! area-weighted values and print (first run only)
+            !----------------------------------------------------------
+            !dP_rst=0.d0
+            !spc1_mass_dp_rst=0.d0
+            !
+            !! Delta pressure from the restart file
+            !if ( ASSOCIATED(iDELPDRY) ) &
+            !     call global_integral_dp_rst(dp_rst, iDELPDRY, IM,JM,LM)
+            !
+            !! Delta pressure as computed from met
+            !call global_integral_dp(dp_met, DryPLE0, IM,JM,LM)
+            !
+            !! v/v for species 1
+            !call global_integral_vv(spc1_vv, Tracers(:,:,:,1), IM,JM,LM)
+            !
+            !! Species 1 v/v * dp (rst) (proxy for mass in restart file)
+            !if ( ASSOCIATED(iDELPDRY) ) &
+            !     call global_integral_trmass_from_dp(spc1_mass_dp_rst, &
+            !     Tracers(:,:,:,1), iDELPDRY, IM,JM,LM)
+            !
+            !! Species 1 v/v * dp (met) (dp computed in function)
+            !call global_integral_trmass_from_p(spc1_mass_dp_met, &
+            !     Tracers(:,:,:,1), DryPLE0, IM,JM,LM)
+            !
+            !! Print the values
+            !if (is_master()) then
+            !   write(6,*) "Global area-weighted sums: sfc p met, dp met, dp rst, spc1 vv, spc1 vv*dp_met, spc1 vv*dp_rst"
+            !   write(6,101)  MASS0, dp_met, dp_rst, spc1_vv, &
+            !        spc1_mass_dp_met, spc1_mass_dp_rst
+            !endif
+101         format('First run, after scaling: ',e21.14,' ',e21.14,' ',e21.14,' ',e21.14,' ',e21.14,' ',e21.14)
+            !----------------------------------------------------------
 
-#ifdef ADJOINT
-         if (.not. isAdjoint) &
-#endif
-         firstRun=.false.
+         endif ! chk_mass .and. firstRun
 
          ! Run FV3 advection
          !------------------
@@ -1097,12 +1232,10 @@ contains
                                              PLEAdv )
             endif
          endif
-#ifdef ADJOINT
-         if (isAdjoint) &
-              firstRun = .false.
-#endif
 
-         ! Update tracer mass conservation
+         ! Compute tracer mass post-advection (proxy). Done for all timesteps.
+         ! Note that TMASS0 and MASS0 refer to proxy mass of first timestep and are
+         ! printed and diffed every timestep for comparison.
          !-------------------------------------------------------------------
          if (chk_mass) then
             if ( Use_Total_Air_Pressure > 0 ) then
@@ -1131,31 +1264,32 @@ contains
                call global_integral(TMASS1, TRACERS, DryPLE1, IM,JM,LM,NQ)
             endif
             if (MASS1 /= 0.0) TMASS1=TMASS1/MASS1
-         endif
 
-         if (chk_mass .and. is_master()) then
-#ifdef PRINT_MASS
-            write(6,100)  MASS0   , &
-                         TMASS0(2), &
-                         TMASS0(3), &
-                         TMASS0(4), &
-                         TMASS0(5)
-            write(6,102)  MASS1   , &
-                         TMASS1(2), &
-                         TMASS1(3), &
-                         TMASS1(4), &
-                         TMASS1(5)
-#endif
-            write(6,103) ( MASS1   - MASS0   )/ MASS0   , &
-                         (TMASS1(2)-TMASS0(2))/TMASS0(2), &
-                         (TMASS1(3)-TMASS0(3))/TMASS0(3), &
-                         (TMASS1(4)-TMASS0(4))/TMASS0(4), &
-                         (TMASS1(5)-TMASS0(5))/TMASS0(5)
- 100        format('Tracer M0  : ',e21.14,' ',e21.14,' ',e21.14,' ',e21.14,' ',e21.14)
- 101        format('Tracer Ma  : ',e21.14,' ',e21.14,' ',e21.14,' ',e21.14,' ',e21.14)
- 102        format('Tracer M1  : ',e21.14,' ',e21.14,' ',e21.14,' ',e21.14,' ',e21.14)
- 103        format('Tracer Mdif: ',e21.14,' ',e21.14,' ',e21.14,' ',e21.14,' ',e21.14)
-         endif
+            if (is_master()) then
+               write(6,102)  MASS0, TMASS0(1)
+               write(6,103)  MASS1, TMASS1(1)
+               write(6,104) ( MASS1   - MASS0   )/ MASS0   , &
+                    (TMASS1(1)-TMASS0(1))/TMASS0(1)
+102            format('Tracer M0  : ',e21.14,' ',e21.14)
+103            format('Tracer M1  : ',e21.14,' ',e21.14)
+104            format('Tracer Mdif: ',e21.14,' ',e21.14)
+            endif
+
+            ! Optional post-advection debug : Sum additional values and print
+            !! Area-weighted delta pressure
+            !call global_integral_dp(dp_met, DryPLE1, IM,JM,LM)
+            !
+            !! Area-weighted species v/v * dp using met (proxy mass)
+            !call global_integral_trmass_from_p(spc1_mass_dp_met, &
+            !     Tracers(:,:,:,1), DryPLE1, IM,JM,LM)
+            !
+            !if (is_master()) then
+            !   write(6,*) "Global area-weighted sums: sfc p met, spc1 vv*dp_met"
+            !   write(6,105) dp_met, spc1_mass_dp_met
+            !endif
+105         format('Post-advection: ',e21.14,' ',e21.14)
+
+         endif ! chk_mass
 
          ! If using total air pressure then convert all tracers from kg/kg total
          ! to kg/kg dry for use in GEOS-Chem. Use the post-advection specific
@@ -1245,6 +1379,8 @@ contains
       call MAPL_TimerOff(MAPL,"TOTAL")
 
       !WMP  end if ! AdvCore_Advection
+
+      firstRun=.false.
 
       RETURN_(ESMF_SUCCESS)
 
@@ -1346,5 +1482,216 @@ subroutine global_integral (QG,Q,PLE,IM,JM,KM,NQ)
       deallocate( qsum1 )
 
 end subroutine global_integral
+
+subroutine global_integral_trmass_from_p (QG,Q,PLE,IM,JM,KM)
+
+      real(FVPRC), intent(OUT)   :: QG
+      real(FVPRC), intent(IN)    :: Q(IM,JM,KM)
+      real(FVPRC), intent(IN)    :: PLE(IM,JM,KM+1)
+      integer,     intent(IN)    :: IM,JM,KM
+
+      ! Locals
+      integer   :: k
+      real(REAL8), allocatable ::    dp(:,:,:)
+      real(FVPRC), allocatable :: qsum1(:,:)
+
+      allocate(    dp(im,jm,km) )
+      allocate( qsum1(im,jm)    )
+
+      ! Pressure thickness [Pa]
+      do k=1,KM
+         dp(:,:,k) = PLE(:,:,k+1)-PLE(:,:,k)
+      enddo
+
+      ! Column sum
+      qsum1(:,:) = 0.d0
+      do k=1,KM
+         qsum1(:,:) = qsum1(:,:) + Q(:,:,k)*dp(:,:,k)
+      enddo
+
+      ! Global sum
+      qg = g_sum( FV_Atm(1)%domain,            &
+           qsum1,                       &
+           is,                          &
+           ie,                          &
+           js,                          &
+           je,                          &
+           FV_Atm(1)%ng,                &
+           FV_Atm(1)%gridstruct%area_64,&
+           0,                           & ! do not divide total sum by total aread
+           .true.)
+
+      deallocate( dp )
+      deallocate( qsum1 )
+
+end subroutine global_integral_trmass_from_p
+
+subroutine global_integral_trmass_from_dp (QG,Q,DP,IM,JM,KM)
+
+      real(FVPRC), intent(OUT)   :: QG
+      real(FVPRC), intent(IN)    :: Q(IM,JM,KM)
+      real(FVPRC), intent(IN)    :: DP(IM,JM,KM)
+      integer,     intent(IN)    :: IM,JM,KM
+
+      ! Locals
+      integer   :: k
+      real(FVPRC), allocatable :: qsum1(:,:)
+
+      allocate( qsum1(im,jm)    )
+
+      ! columm sum
+      qsum1(:,:) = 0.d0
+      do k=1,KM
+         qsum1(:,:) = qsum1(:,:) + Q(:,:,k)*dp(:,:,k)
+      enddo
+
+      ! global sum
+      qg = g_sum( FV_Atm(1)%domain,            &
+           qsum1,                       &
+           is,                          &
+           ie,                          &
+           js,                          &
+           je,                          &
+           FV_Atm(1)%ng,                &
+           FV_Atm(1)%gridstruct%area_64,&
+           0,                           & ! do not divide total sum by total area
+           .true.)
+
+      deallocate( qsum1 )
+
+end subroutine global_integral_trmass_from_dp
+
+subroutine global_integral_dp (QG,PLE,IM,JM,KM)
+
+      real(REAL8), intent(OUT)   :: QG
+      real(FVPRC), intent(IN)    :: PLE(IM,JM,KM+1)
+      integer,     intent(IN)    :: IM,JM,KM
+
+      ! Locals
+      integer   :: k,n
+      real(REAL8), allocatable ::    dp(:,:,:)
+      real(FVPRC), allocatable :: qsum1(:,:)
+
+      allocate(    dp(im,jm,km) )
+      allocate( qsum1(im,jm)    )
+
+      ! Pressure thickness [Pa]
+      do k=1,KM
+         dp(:,:,k) = PLE(:,:,k+1)-PLE(:,:,k)
+      enddo
+
+      ! Column sum
+      qsum1(:,:) = 0.d0
+      do k=1,KM
+         qsum1(:,:) = qsum1(:,:) + dp(:,:,k)
+      enddo
+
+      ! Global sum
+      qg = g_sum( FV_Atm(1)%domain,            &
+           qsum1,                       &
+           is,                          &
+           ie,                          &
+           js,                          &
+           je,                          &
+           FV_Atm(1)%ng,                &
+           FV_Atm(1)%gridstruct%area_64,&
+           0,                           & ! do not divide total sum by total area
+           .true.)
+
+      deallocate( dp )
+      deallocate( qsum1 )
+
+end subroutine global_integral_dp
+
+subroutine global_integral_dp_rst (QG,DP,IM,JM,KM)
+
+      real(REAL8), intent(OUT)   :: QG
+      real(FVPRC), intent(IN)    :: DP(IM,JM,KM)
+      integer,     intent(IN)    :: IM,JM,KM
+
+      ! Locals
+      integer   :: k
+      real(FVPRC), allocatable :: qsum1(:,:)
+
+      allocate( qsum1(im,jm)    )
+
+      ! column sum [Pa]
+      qsum1(:,:) = 0.d0
+      do k=1,KM
+         qsum1(:,:) = qsum1(:,:) + dp(:,:,k)
+      enddo
+
+      ! global sum
+      qg = g_sum( FV_Atm(1)%domain,            &
+           qsum1,                       &
+           is,                          &
+           ie,                          &
+           js,                          &
+           je,                          &
+           FV_Atm(1)%ng,                &
+           FV_Atm(1)%gridstruct%area_64,&
+           0,                           & ! do not divide total sum by total area
+           .true.)
+
+      deallocate( qsum1 )
+
+end subroutine global_integral_dp_rst
+
+subroutine global_integral_vv (QG,Q,IM,JM,KM)
+
+      real(FVPRC), intent(OUT)   :: QG
+      real(FVPRC), intent(IN)    :: Q(IM,JM,KM)
+      integer,     intent(IN)    :: IM,JM,KM
+
+      ! Locals
+      integer   :: k
+      real(FVPRC), allocatable :: qsum1(:,:)
+
+      allocate( qsum1(im,jm)    )
+
+      ! column sum
+      qsum1(:,:) = 0.d0
+      do k=1,KM
+         qsum1(:,:) = qsum1(:,:) + Q(:,:,k)
+      enddo
+
+      ! global sum
+      qg = g_sum( FV_Atm(1)%domain,            &
+           qsum1,                       &
+           is,                          &
+           ie,                          &
+           js,                          &
+           je,                          &
+           FV_Atm(1)%ng,                &
+           FV_Atm(1)%gridstruct%area_64,&
+           0,                           & ! do not divide total sum by total area
+           .true.)
+
+      deallocate( qsum1 )
+
+end subroutine global_integral_vv
+
+subroutine scale_tracers_by_pressure_ratio (Q,PLE,DP,IM,JM,KM,NQ)
+
+      real(FVPRC), intent(INOUT)       :: Q(IM,JM,KM,NQ)
+      real(FVPRC), intent(IN)          :: PLE(IM,JM,KM+1)
+      real(FVPRC), intent(IN)          :: DP(IM,JM,KM)
+      integer,     intent(IN)          :: IM,JM,KM,NQ
+
+      ! Locals
+      integer   :: i,j,k,n
+
+      ! Loop over levels and tracers and apply scaling
+      do n=1,NQ
+      do k=1,KM
+      do j=1,JM
+      do i=1,IM
+         Q(i,j,k,n) = Q(i,j,k,n) * dp(i,j,k) / (PLE(i,j,k+1)-PLE(i,j,k))
+      enddo
+      enddo
+      enddo
+      enddo
+
+end subroutine scale_tracers_by_pressure_ratio
 
 end module AdvCore_GridCompMod
