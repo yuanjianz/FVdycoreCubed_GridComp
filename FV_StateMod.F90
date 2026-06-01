@@ -107,6 +107,13 @@ private
 
   END INTERFACE
 
+  INTERFACE fv_getVerticalMassFlux
+
+   MODULE PROCEDURE fv_getVerticalMassFlux_r4
+   MODULE PROCEDURE fv_getVerticalMassFlux_r8
+
+  END INTERFACE
+
   logical, save :: Init_FV_Domain = .true.
 
   type(fv_atmos_type), allocatable, save :: FV_Atm(:)
@@ -3110,7 +3117,102 @@ subroutine fv_fillMassFluxes(mfx, mfy, cx, cy)
 return
 end subroutine fv_fillMassFluxes
 
-subroutine fv_getVerticalMassFlux(mfx, mfy, mfz, dt)
+subroutine fv_getVerticalMassFlux_r4(mfx, mfy, mfz, dt)
+  real(REAL8), intent(IN   ) :: mfx(FV_Atm(1)%bd%isc:FV_Atm(1)%bd%iec,FV_Atm(1)%bd%jsc:FV_Atm(1)%bd%jec,1:FV_Atm(1)%npz)
+  real(REAL8), intent(IN   ) :: mfy(FV_Atm(1)%bd%isc:FV_Atm(1)%bd%iec,FV_Atm(1)%bd%jsc:FV_Atm(1)%bd%jec,1:FV_Atm(1)%npz)
+  real(REAL4), intent(  OUT) :: mfz(FV_Atm(1)%bd%isc:FV_Atm(1)%bd%iec,FV_Atm(1)%bd%jsc:FV_Atm(1)%bd%jec,1:FV_Atm(1)%npz+1)
+  real(FVPRC), intent(IN)  :: dt
+
+  real(REAL8) :: conv(FV_Atm(1)%bd%isc:FV_Atm(1)%bd%iec,FV_Atm(1)%bd%jsc:FV_Atm(1)%bd%jec,1:FV_Atm(1)%npz)
+  real(REAL8) :: pit(FV_Atm(1)%bd%isc:FV_Atm(1)%bd%iec,FV_Atm(1)%bd%jsc:FV_Atm(1)%bd%jec)
+
+  real(REAL8) :: wbuffer(FV_Atm(1)%bd%jsc:FV_Atm(1)%bd%jec,FV_Atm(1)%npz)
+  real(REAL8) :: sbuffer(FV_Atm(1)%bd%isc:FV_Atm(1)%bd%iec,FV_Atm(1)%npz)
+  real(REAL8) :: ebuffer(FV_Atm(1)%bd%jsc:FV_Atm(1)%bd%jec,FV_Atm(1)%npz)
+  real(REAL8) :: nbuffer(FV_Atm(1)%bd%isc:FV_Atm(1)%bd%iec,FV_Atm(1)%npz)
+  real(REAL8) :: xfx(FV_Atm(1)%bd%isd:FV_Atm(1)%bd%ied+1,FV_Atm(1)%bd%jsd:FV_Atm(1)%bd%jed  ,1:FV_Atm(1)%npz)
+  real(REAL8) :: yfx(FV_Atm(1)%bd%isd:FV_Atm(1)%bd%ied  ,FV_Atm(1)%bd%jsd:FV_Atm(1)%bd%jed+1,1:FV_Atm(1)%npz)
+  real(REAL8) :: xfxtemp(FV_Atm(1)%bd%isd:FV_Atm(1)%bd%ied,FV_Atm(1)%bd%jsd:FV_Atm(1)%bd%jed,1:FV_Atm(1)%npz)
+  real(REAL8) :: yfxtemp(FV_Atm(1)%bd%isd:FV_Atm(1)%bd%ied,FV_Atm(1)%bd%jsd:FV_Atm(1)%bd%jed,1:FV_Atm(1)%npz)
+
+  integer isc,iec,jsc,jec,npz,i,j,k
+  isc=FV_Atm(1)%bd%isc ; iec=FV_Atm(1)%bd%iec
+  jsc=FV_Atm(1)%bd%jsc ; jec=FV_Atm(1)%bd%jec
+  npz=FV_Atm(1)%npz
+! Fill Ghosted arrays and update halos
+  xfx=0.0d0
+  yfx=0.0d0
+  xfxtemp=0.0d0
+  yfxtemp=0.0d0
+  if (FV_Atm(1)%flagstruct%grid_type>=4) then
+    xfxtemp(isc:iec,jsc:jec,:) = mfx
+    yfxtemp(isc:iec,jsc:jec,:) = mfy
+
+   ! Doubly Periodic
+    call mpp_update_domains(xfxtemp, FV_Atm(1)%domain, &
+                            whalo=1, ehalo=1, shalo=1, nhalo=1, complete=.false.)
+    call mpp_update_domains(yfxtemp, FV_Atm(1)%domain, &
+                            whalo=1, ehalo=1, shalo=1, nhalo=1, complete=.true.)
+    xfx(isc:iec+1,jsc:jec,:) = xfxtemp(isc:iec+1,jsc:jec,:)
+    yfx(isc:iec,jsc:jec+1,:) = yfxtemp(isc:iec,jsc:jec+1,:)
+  else
+     xfx(isc:iec,jsc:jec,:) = mfx
+     yfx(isc:iec,jsc:jec,:) = mfy
+     call mpp_get_boundary(xfx, yfx, FV_Atm(1)%domain, &
+                           wbufferx=wbuffer, ebufferx=ebuffer, &
+                           sbuffery=sbuffer, nbuffery=nbuffer, &
+                           gridtype=CGRID_NE, complete=.true. )
+     do k=1,npz
+        do j=jsc,jec
+           xfx(iec+1,j,k) = ebuffer(j,k)
+        enddo
+        do i=isc,iec
+           yfx(i,jec+1,k) = nbuffer(i,k)
+        enddo
+     enddo
+  end if
+
+! Compute the vertical mass flux
+!
+!   Compute Convergence of the horizontal Mass flux
+    do k=1,npz
+       do j=jsc,jec
+          do i=isc,iec
+             conv(i,j,k) = ( xfx(i,j,k) - xfx(i+1,j,k) +  &
+                             yfx(i,j,k) - yfx(i,j+1,k) )
+          enddo
+       enddo
+    enddo
+!   Surface pressure tendency
+    pit(:,:) = 0.0
+    do k=1,npz
+       do j=jsc,jec
+          do i=isc,iec
+             pit(i,j) = pit(i,j) + conv(i,j,k)
+          enddo
+       enddo
+    enddo
+!   Sum over levels
+    do k=2,npz
+       do j=jsc,jec
+          do i=isc,iec
+             conv(i,j,k) = conv(i,j,k) + conv(i,j,k-1)
+          enddo
+       enddo
+    enddo
+    mfz(:,:,:) = 0.0
+    do k=2,npz
+       do j=jsc,jec
+          do i=isc,iec
+             mfz(i,j,k) = ( conv(i,j,k-1)  - FV_Atm(1)%bk(k)*pit(i,j) )/(MAPL_GRAV*fv_atm(1)%gridstruct%area(i,j))  ! Kg/m^2/s
+          enddo
+       enddo
+    enddo
+
+return
+end subroutine fv_getVerticalMassFlux_r4
+
+subroutine fv_getVerticalMassFlux_r8(mfx, mfy, mfz, dt)
   real(REAL8), intent(IN   ) :: mfx(FV_Atm(1)%bd%isc:FV_Atm(1)%bd%iec,FV_Atm(1)%bd%jsc:FV_Atm(1)%bd%jec,1:FV_Atm(1)%npz)
   real(REAL8), intent(IN   ) :: mfy(FV_Atm(1)%bd%isc:FV_Atm(1)%bd%iec,FV_Atm(1)%bd%jsc:FV_Atm(1)%bd%jec,1:FV_Atm(1)%npz)
   real(REAL8), intent(  OUT) :: mfz(FV_Atm(1)%bd%isc:FV_Atm(1)%bd%iec,FV_Atm(1)%bd%jsc:FV_Atm(1)%bd%jec,1:FV_Atm(1)%npz+1)
@@ -3203,7 +3305,7 @@ subroutine fv_getVerticalMassFlux(mfx, mfy, mfz, dt)
     enddo
 
 return
-end subroutine fv_getVerticalMassFlux
+end subroutine fv_getVerticalMassFlux_r8
 
 subroutine compute_utvt(uc, vc, ut, vt, dt)
  use fv_mp_mod,         only: is,js,ie,je, isd,jsd,ied,jed
